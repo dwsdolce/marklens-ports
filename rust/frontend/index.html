@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marklens</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" id="hljs-theme" href="hljs-light.css" />
+  <link rel="stylesheet" href="chrome.css" />
+  <script src="highlight.min.js" defer></script>
+  <script src="mermaid.min.js" defer></script>
+  <script src="main.js" type="module" defer></script>
+</head>
+<body>
+  <!-- Same labels and order as the Qt/PySide ports, so the app looks identical
+       regardless of implementation. -->
+  <div id="toolbar">
+    <button data-act="open" title="⌘O">Open…</button>
+    <button data-act="back" id="back-btn" title="⌘[" disabled>Back</button>
+    <button data-act="reload" title="⌘R">Reload</button>
+    <span class="sep"></span>
+    <button data-act="zoom-out" title="⌘−">Zoom Out</button>
+    <button data-act="zoom-in" title="⌘=">Zoom In</button>
+    <button data-act="zoom-reset" title="⌘0">Actual Size</button>
+    <span class="sep"></span>
+    <input id="find-input" type="search" placeholder="Find…" />
+    <span class="sep"></span>
+    <button data-act="print" title="⌘⇧E">Export as PDF…</button>
+    <button data-act="reveal" id="reveal-btn">Show in Finder</button>
+  </div>
+
+  <article id="content"></article>
+
+  <div id="help-overlay" hidden>
+    <div id="help-panel">
+      <button id="help-close" title="Close">✕</button>
+      <div id="help-body"></div>
+    </div>
+  </div>
+</body>
+</html>

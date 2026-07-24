@@ -1,0 +1,17 @@
+{
+  "_comment": "Link resolution contract. Ported from the Swift LinkResolver tests. Each case: given `href` clicked inside the document at `doc`, `external` is the absolute URL to hand the system browser (or null), and `resolved` is the local file path to open in the viewer (or null). A case sets exactly one of them, or both null for 'do nothing'.",
+  "doc": "/Users/x/Development/STATUS.md",
+  "cases": [
+    { "href": "https://example.com/a", "external": "https://example.com/a", "resolved": null },
+    { "href": "mailto:a@b.com", "external": "mailto:a@b.com", "resolved": null },
+    { "href": "INVENTORY.md", "external": null, "resolved": "/Users/x/Development/INVENTORY.md" },
+    { "href": "notes/DEEP.md", "external": null, "resolved": "/Users/x/Development/notes/DEEP.md" },
+    { "href": "../README.md", "external": null, "resolved": "/Users/x/README.md" },
+    { "href": "../../top.md", "external": null, "resolved": "/Users/top.md" },
+    { "href": "OTHER.md#section", "external": null, "resolved": "/Users/x/Development/OTHER.md" },
+    { "href": "My%20Doc.md", "external": null, "resolved": "/Users/x/Development/My Doc.md" },
+    { "href": "My Doc.md", "external": null, "resolved": "/Users/x/Development/My Doc.md" },
+    { "href": "#heading", "external": null, "resolved": null },
+    { "href": "", "external": null, "resolved": null }
+  ]
+}

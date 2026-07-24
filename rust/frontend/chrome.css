@@ -1,0 +1,83 @@
+/* App chrome (toolbar, find bar, help overlay) — the document itself is styled
+   by the shared styles.css. */
+
+/* The `hidden` attribute must beat the id-based `display: flex` rules below;
+   an id selector otherwise out-specifies the UA `[hidden] { display: none }`,
+   which left the find bar and help overlay permanently on screen. */
+[hidden] {
+  display: none !important;
+}
+
+#toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: Canvas;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+#toolbar button {
+  font: inherit;
+  padding: 3px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+#toolbar button:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.15);
+}
+#toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#toolbar .sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(128, 128, 128, 0.3);
+  margin: 0 4px;
+}
+#toolbar #find-input {
+  flex: 0 0 200px;
+  font: inherit;
+  padding: 3px 8px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+
+#help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+#help-panel {
+  position: relative;
+  width: min(620px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  padding: 28px 32px;
+  border-radius: 12px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+#help-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}

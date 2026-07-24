@@ -1,0 +1,26 @@
+# Python
+python/.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# C++/Qt
+cpp/build/
+cpp/*.pro.user
+
+# Rust/Tauri
+rust/target/
+rust/src-tauri/target/
+node_modules/
+
+.DS_Store
+
+# PyInstaller output
+python/dist/
+python/build_pyi/
+
+# Rust
+rust/src-tauri/target/
+rust/src-tauri/gen/
