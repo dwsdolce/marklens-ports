@@ -32,5 +32,8 @@ def test_gui_script(script: str) -> None:
         capture_output=True,
         text=True,
         timeout=60,
+        # Explicitly not check=True: the assert below reports the child's own
+        # stdout and stderr, which a CalledProcessError traceback would hide.
+        check=False,
     )
     assert result.returncode == 0, f"{script} failed:\n{result.stdout}\n{result.stderr}"

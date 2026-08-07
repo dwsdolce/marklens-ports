@@ -1,0 +1,136 @@
+# Packaging
+
+Each port builds its own installers, from its own directory, with the same
+three script names:
+
+```
+python/packaging/build_win  build_win.bat  build_mac  build_linux
+cpp/packaging/build_win     build_win.bat  build_mac  build_linux
+rust/packaging/build_win    build_win.bat  build_mac  build_linux
+```
+
+Run one from anywhere — each `cd`s to its port's root first:
+
+```bash
+python/packaging/build_win        # Git Bash or Cygwin
+python\packaging\build_win.bat    # cmd
+cpp/packaging/build_mac dmg
+rust/packaging/build_linux
+```
+
+## What comes out
+
+| Port   | Windows                       | macOS                        | Linux                                   |
+|--------|-------------------------------|------------------------------|-----------------------------------------|
+| Python | `Marklens_Python_V<ver>.exe`  | `Marklens_Python_V<ver>.dmg` | `Marklens-Python-<ver>-<arch>.AppImage` |
+| C++    | `Marklens_Cpp_V<ver>.exe`     | `Marklens_Cpp_V<ver>.dmg`    | `Marklens-Cpp-<ver>-<arch>.AppImage`    |
+| Rust   | `Marklens_Rust_V<ver>.exe`    | `Marklens_Rust_V<ver>.dmg`   | `Marklens-Rust-<ver>-<arch>.AppImage` + `.deb` |
+
+Windows installers land in `<port>/installer/`, AppImages and Linux packages in
+`<port>/dist/`, disk images in `<port>/`.
+
+The three install **side by side** on purpose — that is what the repository is
+for. Each has its own display name (`Marklens Python`, `Marklens C++`,
+`Marklens Rust`), its own executable name, its own Windows AppId, and its own
+macOS bundle identifier, so installing one never disturbs another.
+
+## Versions
+
+`tools/gen_version_build.py <port>` produces a four-part version: the port's own
+declared base version plus `git rev-list --count HEAD`.
+
+```
+python   python/pyproject.toml            project.version
+cpp      cpp/CMakeLists.txt               project(... VERSION ...)
+rust     rust/src-tauri/tauri.conf.json   version
+```
+
+It writes `<port>/build/installer_version`, which the Inno Setup scripts read.
+A file rather than an ISCC `/D` argument because Git Bash rewrites any argument
+that looks like a Unix path while Cygwin passes the `//` escape that fixes it
+through literally; a file works in both, and in `cmd`, and in the Inno Setup
+IDE.
+
+The Rust bundle itself keeps the three-part version, because Tauri requires
+valid semver there. The build number still appears in the installer file name.
+
+## Icons
+
+`tools/make_ico.py` generates `shared/icon.ico` from `shared/icon.png`. It is
+generated rather than committed so there is no third copy of the artwork to
+keep in step with the PNG and the `.icns`, and every Windows build script runs
+it first. Pure standard library — no Pillow — so the C++ and Rust ports need
+Python only for this and the version stamp.
+
+## Shared pieces
+
+`inno-existing-install.iss` and `inno-markdown-assoc.iss` are `#include`d by the
+Python and C++ Inno Setup scripts. The first detects an earlier install of the
+same AppId and offers to uninstall it, install elsewhere, or cancel. The second
+adds the app to the **"Open with"** list for `.md`, `.markdown`, `.mdown` and
+`.mkd` — deliberately not as the default handler, because three ports of one
+viewer quietly fighting over every Markdown double-click is not a decision an
+installer gets to make.
+
+## Per-port requirements
+
+**Python** — a venv with the packaging extra (`pip install -e ".[packaging]"`);
+the scripts accept either `python/.venv` or a shared `.venv` at the repository
+root. PyInstaller collects PySide6 wholesale, QtWebEngine included. Windows
+also needs [Inno Setup 6](https://jrsoftware.org/isdl.php); macOS needs
+`create-dmg`; Linux needs
+[appimagetool](https://github.com/AppImage/AppImageKit/releases) at `~/bin` or
+`$APPIMAGETOOL`.
+
+**C++** — CMake, Qt 6 with WebEngineWidgets, md4c, and Python 3. Set
+`CMAKE_PREFIX_PATH` to the Qt installation (semicolon-separated if md4c lives
+somewhere of its own). No generator or compiler is forced: CMake picks the
+platform default, which must match the ABI of the Qt build you point it at —
+MSVC for Qt's official Windows binaries, Apple Clang for Homebrew Qt, system
+GCC on Linux. The Qt runtime is deployed with `windeployqt` / `macdeployqt` /
+`linuxdeploy` + its Qt plugin (at `~/bin` or `$LINUXDEPLOY` and
+`$LINUXDEPLOY_PLUGIN_QT`). Packaging builds into `cpp/build-packaging/` and
+stages into `cpp/dist/`, leaving the `cpp/build/` tree from `cpp/README.md`
+alone.
+
+Two Windows snags worth knowing. **Qt WebEngine is not part of the base Qt
+install** — add it with the maintenance tool
+(`MaintenanceTool.exe search qtwebengine` lists the package names, then
+`MaintenanceTool.exe install extensions.qtwebengine.<ver>.<kit>`). And **md4c
+has no Windows package**; either `vcpkg install md4c` and set
+`CMAKE_TOOLCHAIN_FILE`, or build it from source, which is quicker:
+
+```bash
+git clone https://github.com/mity/md4c && cd md4c
+cmake -B build -DCMAKE_INSTALL_PREFIX=C:/md4c
+cmake --build build --config Release
+cmake --install build --config Release
+```
+
+**Rust** — Rust, the Tauri CLI (`cargo install tauri-cli --version "^2.0"`) and
+Python 3. Tauri's own bundler does the packaging rather than Inno Setup: it is
+the only one of the three that installs the WebView2 runtime the app cannot
+start without, and it builds the disk image and AppImage itself. Tauri also
+registers the Markdown file types as a full association rather than an
+"Open with" entry — the one place the three ports differ, and the reason to
+install this one last if you want it to own `.md`.
+
+## Signing
+
+Off by default, and read from the environment — this repository is public and a
+Developer ID does not belong in it. Unsigned builds work fine locally;
+Gatekeeper warns on first launch and right-click → Open gets past it.
+
+```bash
+# Python and C++ (PyInstaller / macdeployqt / codesign):
+export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export INSTALLER_IDENTITY="Developer ID Installer: Your Name (TEAMID)"   # pkg only
+export NOTARY_PROFILE="notarytool-profile"
+
+# Rust (Tauri reads its own names):
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_KEYCHAIN_PROFILE="notarytool-profile"
+```
+
+Windows code signing is not wired up in any of the three; add a `signtool` step
+after the installer is produced if you need it.

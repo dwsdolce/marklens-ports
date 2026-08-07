@@ -104,20 +104,18 @@ Two levels, both done:
 - **Runtime window/Dock icon** — `setWindowIcon(QIcon(.../icon.png))` in
   main.cpp and __main__.py. Works immediately, no packaging.
 - **Bundled app icon:**
-  - **C++**: CMake now builds a macOS `.app` (`MACOSX_BUNDLE` + icns in
-    Resources + `CFBundleName=Marklens`). Output: `build/marklens.app`. This
-    also FIXES the app-menu-name issue (now shows "Marklens"). Run:
-    `open build/marklens.app --args <file>` or
-    `./build/marklens.app/Contents/MacOS/marklens <file>`. NOTE: the bundle
-    still reads assets from the source `shared/` via `MARKLENS_SHARED_DIR`
-    (baked path) — not relocatable; a real distributable would copy shared/ in.
-  - **Python**: PyInstaller. `python/marklens.spec` builds `dist/Marklens.app`
-    with the icns. Entry point is `python/run.py` (NOT `__main__.py` — running
-    that directly breaks its relative imports). `assets._shared_dir()` is now
-    frozen-aware (`sys._MEIPASS`). Verified: builds, launches clean offscreen,
-    and shared/ resolves (PyInstaller symlinks Frameworks/shared →
-    Resources/shared). Build: `.venv/bin/pyinstaller --noconfirm marklens.spec`.
-
+  - **C++**: CMake builds a macOS `.app` (`MACOSX_BUNDLE` + icns in Resources).
+    Output: `build/Marklens C++.app` on macOS, `build/marklens-cpp` elsewhere.
+    This also FIXES the app-menu-name issue. Run:
+    `open "build/Marklens C++.app" --args <file>`.
+  - **Python**: PyInstaller. `python/packaging/marklens.spec` builds
+    `dist/Marklens Python.app`. Entry point is `python/run.py` (NOT
+    `__main__.py` — running that directly breaks its relative imports).
+    `assets._shared_dir()` is frozen-aware (`sys._MEIPASS`).
+  - Both are now relocatable: `assets::sharedDir()` prefers a `shared/` next to
+    the executable (`Contents/Resources/shared` in a macOS bundle) and only
+    falls back to the baked-in `MARKLENS_SHARED_DIR` for development builds.
+    See `packaging/README.md` for the full story.
 Both suites still green after all this: C++ 3/3, Python 36, ruff+mypy clean.
 
 ## Post-ship fix: link-navigation trace trap (SIGTRAP)
@@ -143,5 +141,5 @@ recompile — `touch` the file after such a restore.
 ```bash
 cd cpp && cmake -B build -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qt && cmake --build build
 ctest --test-dir build --output-on-failure          # core fixture tests
-./build/marklens ../shared/spec/sample/index.md      # run the app
+./build/marklens-cpp ../shared/spec/sample/index.md  # run the app
 ```

@@ -14,13 +14,37 @@
   z-index: 10;
   display: flex;
   align-items: center;
+  /* All three ports open at 900x720, which is narrower than this toolbar's
+     natural width. Qt collapses the overflow into a ">>" extension button;
+     wrapping to a second row is the closest thing that needs no JavaScript,
+     and unlike shrinking it never puts a control out of reach. */
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 10px;
   background: Canvas;
   border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  /* The chrome must NOT inherit the document font. styles.css sets 16px in a
+     reading face, which is right for the article and far too big for a
+     toolbar - at that size the buttons overflow the row, shrink, and wrap
+     their labels onto two lines.
+     `font: menu` is the CSS system-font keyword: it resolves to whatever the
+     platform uses for menus and toolbars - Segoe UI 9pt on Windows, the system
+     UI face on macOS and Linux. That is the same font Qt gives its widgets for
+     free, so the three ports match by construction rather than by a hardcoded
+     size that happens to be close on one machine.
+     The longhands come first as a fallback: if a webview does not understand
+     the `menu` keyword it drops that declaration and keeps these, rather than
+     falling back to the 16px document font and reintroducing the bug. */
+  font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font: menu;
 }
 #toolbar button {
   font: inherit;
+  /* Labels are two words ("Zoom Out", "Actual Size"); without these a narrow
+     window wraps them instead of letting the toolbar scroll. */
+  white-space: nowrap;
+  flex: 0 0 auto;
   padding: 3px 10px;
   border: 1px solid rgba(128, 128, 128, 0.35);
   border-radius: 6px;
@@ -36,13 +60,15 @@
   cursor: default;
 }
 #toolbar .sep {
+  flex: 0 0 auto;
   width: 1px;
   height: 18px;
   background: rgba(128, 128, 128, 0.3);
   margin: 0 4px;
 }
 #toolbar #find-input {
-  flex: 0 0 200px;
+  flex: 0 1 200px;
+  min-width: 90px;
   font: inherit;
   padding: 3px 8px;
   border: 1px solid rgba(128, 128, 128, 0.4);

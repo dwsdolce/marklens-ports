@@ -1,5 +1,5 @@
 {
-  "_comment": "Link resolution contract. Ported from the Swift LinkResolver tests. Each case: given `href` clicked inside the document at `doc`, `external` is the absolute URL to hand the system browser (or null), and `resolved` is the local file path to open in the viewer (or null). A case sets exactly one of them, or both null for 'do nothing'.",
+  "_comment": "Link resolution contract. Ported from the Swift LinkResolver tests. Each case: given `href` clicked inside the document at `doc`, `external` is the absolute URL to hand the system browser (or null), and `resolved` is the local file path to open in the viewer (or null). A case sets exactly one of them, or both null for 'do nothing'. Paths are spelled the POSIX way because this fixture is platform-neutral; each port returns whatever separator its host OS uses, so the three test harnesses normalise separators before comparing.",
   "doc": "/Users/x/Development/STATUS.md",
   "cases": [
     { "href": "https://example.com/a", "external": "https://example.com/a", "resolved": null },

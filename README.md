@@ -25,12 +25,30 @@ shared/
 python/             Phase 1 — PySide6
 cpp/                Phase 2 — Qt Widgets
 rust/               Phase 3 — Tauri
+packaging/          Bits the three ports' installers share, plus the how-to
+tools/              Version stamping and icon generation
 ```
 
 The point of `shared/spec/fixtures` is that all three implementations prove
 themselves against the *same* cases. Different Markdown engines emit slightly
 different HTML, so the render assertions are tolerant substrings (assert a
 `<table>` exists, not its exact attributes).
+
+## Installers
+
+Each port builds its own, from its own directory, with the same three script
+names:
+
+```bash
+python/packaging/build_win        # or build_win.bat, build_mac, build_linux
+cpp/packaging/build_mac dmg
+rust/packaging/build_linux
+```
+
+They install side by side on purpose — `Marklens Python`, `Marklens C++` and
+`Marklens Rust` each have their own name, install location and identifiers, so
+you can run all three at once and compare. See
+[packaging/README.md](packaging/README.md).
 
 ## Status
 

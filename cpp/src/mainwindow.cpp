@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -18,6 +19,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProcess>
+#include <QSet>
 #include <QSettings>
 #include <QTextBrowser>
 #include <QToolBar>
@@ -193,20 +195,67 @@ void MainWindow::openPath(const QString &path, bool recordHistory) {
 
 // --- recent files (persisted via QSettings) --------------------------------
 
+namespace {
+
+// This port and the Python one share a single QSettings store - same
+// organisation and application name - but reach it spelling paths differently:
+// Qt hands back forward slashes (QFileDialog, QUrl::toLocalFile) while Python's
+// str(Path) is native, so on Windows the same document landed in the list
+// twice. Forward slashes are the canonical form because that is what the rest
+// of this file already works with; converting instead would change m_current
+// and break the same-document fragment check in page.cpp.
+QString canonicalRecent(const QString &path) {
+    return QDir::fromNativeSeparators(path);
+}
+
+// Windows filenames are case-insensitive as well, so the comparison key folds
+// case there and nowhere else.
+QString recentKey(const QString &path) {
+#if defined(Q_OS_WIN)
+    return canonicalRecent(path).toLower();
+#else
+    return canonicalRecent(path);
+#endif
+}
+
+// Read the stored list, canonicalising and de-duplicating as it goes, so a list
+// written by an older build (or by the Python port) is cleaned up on sight
+// rather than needing a migration step.
+QStringList loadRecent() {
+    QStringList out;
+    QSet<QString> seen;
+    for (const QString &path : QSettings().value("recentFiles").toStringList()) {
+        const QString canonical = canonicalRecent(path);
+        if (!seen.contains(recentKey(canonical))) {
+            seen.insert(recentKey(canonical));
+            out << canonical;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 void MainWindow::addRecent(const QString &path) {
-    QSettings s;
-    QStringList recent = s.value("recentFiles").toStringList();
-    recent.removeAll(path);
-    recent.prepend(path);
+    const QString canonical = canonicalRecent(path);
+    const QString key = recentKey(canonical);
+
+    QStringList recent;
+    for (const QString &existing : loadRecent()) {
+        if (recentKey(existing) != key)
+            recent << existing;
+    }
+    recent.prepend(canonical);
     while (recent.size() > 10)
         recent.removeLast();
-    s.setValue("recentFiles", recent);
+
+    QSettings().setValue("recentFiles", recent);
     rebuildRecentMenu();
 }
 
 void MainWindow::rebuildRecentMenu() {
     m_recentMenu->clear();
-    const QStringList recent = QSettings().value("recentFiles").toStringList();
+    const QStringList recent = loadRecent();
     if (recent.isEmpty()) {
         m_recentMenu->addAction("No Recent Documents")->setEnabled(false);
         return;

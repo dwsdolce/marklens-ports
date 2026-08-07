@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Marklens Python
+Comment=A fast Markdown viewer (Python/PySide6 port)
+Exec=marklens-py %f
+Icon=marklens-py
+MimeType=text/markdown;text/x-markdown;
+Categories=Office;Utility;Viewer;
+Terminal=false
+StartupNotify=true
+Keywords=markdown;md;viewer;preview;

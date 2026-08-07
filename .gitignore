@@ -24,3 +24,19 @@ python/build_pyi/
 # Rust
 rust/src-tauri/target/
 rust/src-tauri/gen/
+
+# Packaging output (see packaging/README.md)
+*/installer/
+python/build/
+python/dist/
+cpp/build-packaging/
+cpp/dist/
+rust/build/
+rust/dist/
+
+# Generated from shared/icon.png by tools/make_ico.py, so there is no second
+# copy of the artwork to keep in step. The Rust port's copy is NOT ignored:
+# tauri-build reads bundle.icon at compile time, so a plain `cargo build` or
+# `cargo test` fails without it, and it sits beside the icon.png and icon.icns
+# that Tauri already expects to be committed there.
+shared/icon.ico

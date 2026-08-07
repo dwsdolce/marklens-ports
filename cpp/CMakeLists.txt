@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(marklens LANGUAGES CXX)
+project(marklens VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,6 +35,19 @@ target_link_libraries(marklens_gui PUBLIC
     marklens_core Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebEngineCore
 )
 
+# The three ports install side by side by design, so the shipped name says
+# which one this is. On macOS that name is also the bundle: "Marklens C++.app".
+if(APPLE)
+    set(MARKLENS_APP_NAME "Marklens C++")
+else()
+    set(MARKLENS_APP_NAME "marklens-cpp")
+endif()
+
+# The four-part version for the Windows resource. The packaging scripts pass it
+# in from tools/gen_version_build.py; a plain developer build gets build 0.
+set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.0" CACHE STRING
+    "Four-part version stamped into the Windows executable resource")
+
 # On macOS, build a .app bundle so it carries an icon and a proper app-menu
 # name. The .icns is copied into the bundle's Resources.
 set(APP_ICON "${SHARED_DIR}/icon.icns")
@@ -43,9 +56,65 @@ set_source_files_properties("${APP_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION Res
 qt_add_executable(marklens MACOSX_BUNDLE src/main.cpp "${APP_ICON}")
 target_link_libraries(marklens PRIVATE marklens_gui)
 set_target_properties(marklens PROPERTIES
-    MACOSX_BUNDLE_BUNDLE_NAME "Marklens"
+    OUTPUT_NAME "${MARKLENS_APP_NAME}"
+    # Windows: link as a GUI-subsystem binary, or launching the viewer also
+    # pops a console window behind it. qt_add_executable does not set this for
+    # you. Qt supplies the WinMain shim via its entry-point library, so main()
+    # in src/main.cpp stays as it is. Ignored on the other platforms, and
+    # deliberately not set on the test executables, which want their stdout.
+    WIN32_EXECUTABLE TRUE
+    MACOSX_BUNDLE_BUNDLE_NAME "${MARKLENS_APP_NAME}"
     MACOSX_BUNDLE_GUI_IDENTIFIER "solutions.ddj.marklens.cpp"
     MACOSX_BUNDLE_ICON_FILE "icon.icns"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${MARKLENS_FULL_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${MARKLENS_FULL_VERSION}"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist.in"
+)
+
+# Windows: icon and version resource, so Explorer, the taskbar and the
+# Properties tab all show something sensible. The .ico is generated from the
+# shared PNG by tools/make_ico.py rather than committed a third time.
+if(WIN32)
+    set(MARKLENS_ICO "${SHARED_DIR}/icon.ico")
+    if(EXISTS "${MARKLENS_ICO}")
+        string(REPLACE "." "," MARKLENS_VERSION_COMMAS "${MARKLENS_FULL_VERSION}")
+        configure_file(packaging/marklens.rc.in "${CMAKE_CURRENT_BINARY_DIR}/marklens.rc" @ONLY)
+        target_sources(marklens PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/marklens.rc")
+    else()
+        message(WARNING "shared/icon.ico is missing (run tools/make_ico.py) - "
+                        "the executable will have no icon")
+    endif()
+endif()
+
+# --- install ---------------------------------------------------------------
+# Staging for the packaging scripts, which run `cmake --install` into a
+# throwaway prefix and then hand it to windeployqt / macdeployqt / linuxdeploy:
+#
+#   Windows, Linux:  <prefix>/marklens-cpp[.exe]  and  <prefix>/shared/...
+#   macOS:           <prefix>/Marklens C++.app    (assets in Contents/Resources)
+#
+# Only the files the application reads at runtime are installed; shared/spec is
+# fixtures and a sample document for the test suite, and has no business in a
+# shipped bundle.
+if(APPLE)
+    set(MARKLENS_ASSET_DEST "${MARKLENS_APP_NAME}.app/Contents/Resources/shared")
+else()
+    set(MARKLENS_ASSET_DEST "shared")
+endif()
+
+install(TARGETS marklens
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION .
+)
+install(DIRECTORY "${SHARED_DIR}/web"   DESTINATION "${MARKLENS_ASSET_DEST}")
+install(DIRECTORY "${SHARED_DIR}/icons" DESTINATION "${MARKLENS_ASSET_DEST}")
+install(FILES
+    "${SHARED_DIR}/icon.png"
+    "${SHARED_DIR}/help.html"
+    "${SHARED_DIR}/help_default_macos.html"
+    "${SHARED_DIR}/help_default_windows.html"
+    "${SHARED_DIR}/help_default_linux.html"
+    DESTINATION "${MARKLENS_ASSET_DEST}"
 )
 
 # --- tests -----------------------------------------------------------------

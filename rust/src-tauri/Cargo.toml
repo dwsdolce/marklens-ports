@@ -9,8 +9,10 @@ edition = "2021"
 name = "marklens"
 path = "src/lib.rs"
 
+# Named for the port: the bundled application is "Marklens Rust", and
+# tauri.conf.json's mainBinaryName has to match what cargo produces.
 [[bin]]
-name = "marklens"
+name = "marklens-rust"
 path = "src/main.rs"
 
 [build-dependencies]

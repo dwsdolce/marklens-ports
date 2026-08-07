@@ -12,6 +12,19 @@ fn fixture(name: &str) -> Value {
     serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap()
 }
 
+/// Separators as the fixture writes them.
+///
+/// The fixture is language- *and* platform-neutral, so it spells paths the
+/// POSIX way. `document_relative_path` deliberately does not: it returns what
+/// the host OS wants, which on Windows means backslashes, because that is what
+/// gets handed to the file APIs. The contract being pinned here is which file a
+/// link resolves to, not how the separator is spelled, so the separator is
+/// normalised before comparing - the same tolerance the render cases use for
+/// engine-specific HTML.
+fn posix(path: Option<String>) -> Option<String> {
+    path.map(|p| p.replace(std::path::MAIN_SEPARATOR, "/"))
+}
+
 #[test]
 fn render_cases() {
     let data = fixture("render_cases.json");
@@ -47,7 +60,7 @@ fn link_cases() {
         // resolved is only asserted for non-external hrefs (matches the fixture).
         if external.is_none() {
             assert_eq!(
-                marklens::links::document_relative_path(href, doc).as_deref(),
+                posix(marklens::links::document_relative_path(href, doc)).as_deref(),
                 resolved,
                 "document_relative_path({href:?})"
             );

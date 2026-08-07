@@ -1,0 +1,42 @@
+// Windows resource script for the C++ port. Configured by CMakeLists.txt,
+// which substitutes the @-delimited values; do not edit the generated copy in
+// the build directory.
+//
+// Gives the executable an icon in Explorer and the taskbar, and fills in the
+// Properties > Details tab. Inno Setup also compares the version resource when
+// deciding whether a file being installed is newer than the one on disk.
+
+#include <windows.h>
+
+// IDI_ICON1 by convention: Windows shows the numerically lowest icon resource
+// as the application icon, and Qt's default resource uses nothing lower.
+IDI_ICON1 ICON "@MARKLENS_ICO@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    @MARKLENS_VERSION_COMMAS@
+PRODUCTVERSION @MARKLENS_VERSION_COMMAS@
+FILEFLAGSMASK  0x3fL
+FILEFLAGS      0x0L
+FILEOS         VOS_NT_WINDOWS32
+FILETYPE       VFT_APP
+FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"    // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      "Dolce Sfogato"
+            VALUE "FileDescription",  "Marklens - a fast Markdown viewer (C++/Qt port)"
+            VALUE "FileVersion",      "@MARKLENS_FULL_VERSION@"
+            VALUE "InternalName",     "marklens-cpp"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 Marklens contributors."
+            VALUE "OriginalFilename", "marklens-cpp.exe"
+            VALUE "ProductName",      "Marklens C++"
+            VALUE "ProductVersion",   "@MARKLENS_FULL_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

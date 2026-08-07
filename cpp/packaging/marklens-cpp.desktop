@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Marklens C++
+Comment=A fast Markdown viewer (C++/Qt port)
+Exec=marklens-cpp %f
+Icon=marklens-cpp
+MimeType=text/markdown;text/x-markdown;
+Categories=Office;Utility;Viewer;
+Terminal=false
+StartupNotify=true
+Keywords=markdown;md;viewer;preview;

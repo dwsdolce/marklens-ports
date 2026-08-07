@@ -1,3 +1,4 @@
+#include "assets.h"
 #include "mainwindow.h"
 
 #include <QApplication>
@@ -7,7 +8,7 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setApplicationName("Marklens");
     app.setOrganizationName("Marklens"); // gives QSettings (recent files) a home
-    app.setWindowIcon(QIcon(QStringLiteral(MARKLENS_SHARED_DIR) + "/icon.png"));
+    app.setWindowIcon(QIcon(assets::iconPath()));
 
     MainWindow window;
     window.show();

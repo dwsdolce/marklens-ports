@@ -30,6 +30,23 @@ cargo test            # core: comrak renderer + link resolver vs shared fixtures
 contract the Python and C++ ports satisfy. comrak matched it with no per-engine
 fixups (strikethrough is `<del>` natively).
 
+## Package
+
+```bash
+packaging/build_win        # Git Bash or Cygwin -> installer/Marklens_Rust_V<ver>.exe
+packaginguild_win.bat    # cmd, same output
+packaging/build_mac        # -> Marklens_Rust_V<ver>.dmg  (or `build_mac app`)
+packaging/build_linux      # -> dist/Marklens-Rust-<ver>-{AppImage,deb}
+```
+
+Tauri's own bundler does the packaging here rather than Inno Setup and
+appimagetool, as the other two ports use: it is the only one that installs the
+WebView2 runtime Windows needs, and the frontend is already embedded in the
+binary so there is nothing else to collect. The scripts stamp the version, and
+rename the output to the naming convention the other ports use. See
+[../packaging/README.md](../packaging/README.md) for the details and for
+signing.
+
 ## Notes
 
 - **No headless GUI test.** Tauri uses the OS webview, which has no offscreen

@@ -1,0 +1,140 @@
+#!/bin/bash
+#
+# Build the Linux application bundle and an AppImage for the C++ port.
+#
+#   cpp/packaging/build_linux
+#
+# Produces:
+#   cpp/dist/                                       the staged application
+#   cpp/dist/Marklens-Cpp-<version>-<arch>.AppImage
+#
+# Requires CMake, Qt 6 with WebEngineWidgets, md4c, Python 3, and linuxdeploy
+# with its Qt plugin:
+#
+#   https://github.com/linuxdeploy/linuxdeploy/releases
+#   https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases
+#
+# Both are expected at ~/bin (chmod +x them) or wherever LINUXDEPLOY and
+# LINUXDEPLOY_PLUGIN_QT point. linuxdeploy is used rather than appimagetool
+# directly because a Qt application needs its plugins, and QtWebEngine needs
+# QtWebEngineProcess plus the Chromium resources, gathered first - which is
+# exactly what the Qt plugin does. The Python port skips this because
+# PyInstaller has already collected everything by that point.
+
+# Run from the port's root regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
+
+PYTHON="${PYTHON:-python3}"
+BUILD_DIR=build-packaging
+STAGE_DIR=dist
+APPDIR="$STAGE_DIR/AppDir"
+
+if ! command -v cmake >/dev/null 2>&1; then
+    echo "cmake is not on PATH"
+    exit 1
+fi
+
+echo "Running build for `uname -m` architecture"
+
+#===============================================
+# Clean-up
+#===============================================
+# build/ is deliberately left alone: cpp/README.md tells developers to configure
+# there, and wiping their tree as a side effect of packaging would be rude.
+rm -rf "$BUILD_DIR"
+rm -rf "$STAGE_DIR"
+
+#===============================================
+# Generate the version from the git commit count
+#===============================================
+# --print also writes cpp/build/installer_version, so this is one call, not two.
+VERSION=$("$PYTHON" ../tools/gen_version_build.py cpp --print)
+if [ $? -ne 0 ]; then
+    echo "Generating the version failed"
+    exit 1
+fi
+echo "Creating AppImage for version ${VERSION}"
+
+#===============================================
+# Configure and build
+#===============================================
+cmake -B "$BUILD_DIR" -S . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DMARKLENS_FULL_VERSION="$VERSION"
+if [ $? -ne 0 ]; then
+    echo "Configuring failed"
+    exit 1
+fi
+
+cmake --build "$BUILD_DIR" --config Release
+if [ $? -ne 0 ]; then
+    echo "Building failed"
+    exit 1
+fi
+
+#===============================================
+# Assemble AppDir
+#===============================================
+# The executable and the shared assets go under usr/bin, side by side, because
+# assets::sharedDir() looks for shared/ next to the executable.
+mkdir -p "$APPDIR/usr/bin" \
+         "$APPDIR/usr/share/applications" \
+         "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+
+cmake --install "$BUILD_DIR" --config Release --prefix "$APPDIR/usr/bin"
+if [ $? -ne 0 ]; then
+    echo "Installing to the AppDir failed"
+    exit 1
+fi
+
+# Desktop entry and icon - linuxdeploy needs both, and puts copies at the
+# AppDir root itself.
+cp packaging/marklens-cpp.desktop "$APPDIR/usr/share/applications/"
+cp ../shared/icon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-cpp.png"
+
+# AppRun launcher. linuxdeploy would generate one, but ours exports the
+# QtWebEngine sandbox setting that a relocated Chromium needs.
+cp packaging/AppRun "$APPDIR/AppRun"
+chmod +x "$APPDIR/AppRun"
+
+#===============================================
+# Build the AppImage
+#===============================================
+LINUXDEPLOY="${LINUXDEPLOY:-$HOME/bin/linuxdeploy}"
+LINUXDEPLOY_PLUGIN_QT="${LINUXDEPLOY_PLUGIN_QT:-$HOME/bin/linuxdeploy-plugin-qt}"
+
+if [ ! -x "$LINUXDEPLOY" ]; then
+    echo "linuxdeploy not found at $LINUXDEPLOY"
+    echo "Download it from https://github.com/linuxdeploy/linuxdeploy/releases"
+    echo "or set LINUXDEPLOY=/path/to/linuxdeploy"
+    exit 1
+fi
+if [ ! -x "$LINUXDEPLOY_PLUGIN_QT" ]; then
+    echo "linuxdeploy-plugin-qt not found at $LINUXDEPLOY_PLUGIN_QT"
+    echo "Download it from https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases"
+    echo "or set LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt"
+    exit 1
+fi
+
+# linuxdeploy finds the plugin on PATH, not by argument.
+export PATH="$(dirname "$LINUXDEPLOY_PLUGIN_QT"):$PATH"
+
+ARCH=$(uname -m)
+OUT="$STAGE_DIR/Marklens-Cpp-${VERSION}-${ARCH}.AppImage"
+
+# --custom-apprun keeps our launcher; without it the plugin overwrites AppRun.
+ARCH=$ARCH OUTPUT="$OUT" "$LINUXDEPLOY" \
+    --appdir "$APPDIR" \
+    --executable "$APPDIR/usr/bin/marklens-cpp" \
+    --desktop-file "$APPDIR/usr/share/applications/marklens-cpp.desktop" \
+    --icon-file ../shared/icon.png \
+    --icon-filename marklens-cpp \
+    --custom-apprun packaging/AppRun \
+    --plugin qt \
+    --output appimage
+if [ $? -ne 0 ]; then
+    echo "linuxdeploy failed"
+    exit 1
+fi
+
+echo "Built $OUT"

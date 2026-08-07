@@ -1,0 +1,170 @@
+#!/bin/bash
+#
+# Build the Windows application bundle and installer for the C++ port.
+#
+#   cpp/packaging/build_win
+#
+# Produces:
+#   cpp/dist/                                    the deployed application
+#   cpp/installer/Marklens_Cpp_V<version>.exe
+#
+# Runs under Cygwin or Git Bash. Requires:
+#   - CMake and Visual Studio with the C++ toolset. No generator is forced, so
+#     CMake picks the newest Visual Studio it knows about and finds the compiler
+#     itself - a developer command prompt is only needed if you override the
+#     generator with Ninja or NMake.
+#   - Qt 6 *with the WebEngine module*, which the base Qt install does not
+#     include. Add it with the Qt maintenance tool, e.g.
+#       C:/Qt/MaintenanceTool.exe install extensions.qtwebengine.<ver>.<kit>
+#     (run `MaintenanceTool.exe search qtwebengine` for the exact package name).
+#   - md4c, which has no Windows package. Either vcpkg (vcpkg install md4c,
+#     then set CMAKE_TOOLCHAIN_FILE) or build it from source, which is quicker:
+#       git clone https://github.com/mity/md4c && cd md4c
+#       cmake -B build -DCMAKE_INSTALL_PREFIX=C:/md4c
+#       cmake --build build --config Release
+#       cmake --install build --config Release
+#   - Inno Setup 6 (https://jrsoftware.org/isdl.php)
+#   - Python 3, for the icon and version stamping
+#
+# Configuration is taken from the environment so the same script works whether
+# Qt and md4c came from the online installer, vcpkg, Conan or a source build.
+# CMAKE_PREFIX_PATH takes a semicolon-separated list:
+#
+#   export CMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc2022_64;C:/md4c"
+#   export CMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+
+# Run from the port's root regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
+
+PYTHON="${PYTHON:-python}"
+BUILD_DIR=build-packaging
+STAGE_DIR=dist
+
+if ! command -v cmake >/dev/null 2>&1; then
+    echo "cmake is not on PATH"
+    exit 1
+fi
+if [ -z "$CMAKE_PREFIX_PATH" ]; then
+    echo "CMAKE_PREFIX_PATH is not set - point it at your Qt 6 installation, e.g."
+    echo "  export CMAKE_PREFIX_PATH=\"C:/Qt/6.11.1/msvc2022_64\""
+    exit 1
+fi
+
+echo "Running build for $(uname -m) architecture"
+
+#===============================================
+# Clean-up
+#===============================================
+# build/ is deliberately left alone: cpp/README.md tells developers to configure
+# there, and wiping their tree as a side effect of packaging would be rude.
+# Packaging gets its own directories.
+rm -rf "$BUILD_DIR"
+rm -rf "$STAGE_DIR"
+
+#===============================================
+# Generate the Windows icon from the shared PNG
+#===============================================
+# Compiled into the executable by the resource script; also used by the wizard.
+"$PYTHON" ../tools/make_ico.py
+if [ $? -ne 0 ]; then
+    echo "Generating the icon failed"
+    exit 1
+fi
+
+#===============================================
+# Generate the version from the git commit count
+#===============================================
+# Writes cpp/build/installer_version, which the Inno Setup script reads. --print
+# also writes it, so this is one call, not two.
+version=$("$PYTHON" ../tools/gen_version_build.py cpp --print)
+if [ $? -ne 0 ]; then
+    echo "Generating the version failed"
+    exit 1
+fi
+echo "Creating installer for version ${version}"
+
+#===============================================
+# Configure and build
+#===============================================
+cmake -B "$BUILD_DIR" -S . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DMARKLENS_FULL_VERSION="$version"
+if [ $? -ne 0 ]; then
+    echo "Configuring failed"
+    exit 1
+fi
+
+cmake --build "$BUILD_DIR" --config Release
+if [ $? -ne 0 ]; then
+    echo "Building failed"
+    exit 1
+fi
+
+#===============================================
+# Stage the application and its assets
+#===============================================
+cmake --install "$BUILD_DIR" --config Release --prefix "$STAGE_DIR"
+if [ $? -ne 0 ]; then
+    echo "Installing to ${STAGE_DIR} failed"
+    exit 1
+fi
+
+#===============================================
+# Deploy the Qt runtime next to the executable
+#===============================================
+# windeployqt copies the Qt DLLs, the platform and imageformat plugins, and -
+# crucially for this app - QtWebEngineProcess.exe together with its Chromium
+# resources and ICU data.
+WINDEPLOYQT=$(command -v windeployqt.exe || command -v windeployqt)
+if [ -z "$WINDEPLOYQT" ]; then
+    # CMAKE_PREFIX_PATH is a CMake *list*, so it may hold several roots
+    # separated by semicolons (Qt plus md4c, say). Try each one's bin/.
+    saved_ifs=$IFS
+    IFS=';'
+    for prefix in $CMAKE_PREFIX_PATH; do
+        if [ -f "$prefix/bin/windeployqt.exe" ]; then
+            WINDEPLOYQT="$prefix/bin/windeployqt.exe"
+            break
+        fi
+    done
+    IFS=$saved_ifs
+fi
+if [ -z "$WINDEPLOYQT" ]; then
+    echo "windeployqt not found - add Qt's bin directory to PATH"
+    exit 1
+fi
+
+"$WINDEPLOYQT" --release --no-translations --no-compiler-runtime \
+    "$STAGE_DIR/marklens-cpp.exe"
+if [ $? -ne 0 ]; then
+    echo "windeployqt failed"
+    exit 1
+fi
+
+#===============================================
+# Prepare installer path
+#===============================================
+# ISCC is a native Windows program, so it needs a Windows path. cygpath is
+# present in both Cygwin and Git Bash.
+installer_file=$(cygpath -w "$(pwd)/packaging/marklens-cpp.iss")
+ISCC_PATH="C:/Program Files (x86)/Inno Setup 6/ISCC.exe"
+
+if [ ! -f "$ISCC_PATH" ]; then
+    echo "Inno Setup 6 not found at ${ISCC_PATH}"
+    echo "Install it from https://jrsoftware.org/isdl.php"
+    exit 1
+fi
+
+#===============================================
+# You must install Inno Setup 6 to build the installer
+#===============================================
+# No /D argument: the script reads build/installer_version itself. Git Bash
+# rewrites arguments that look like Unix paths and Cygwin does not, so a
+# command-line define cannot be written to work in both shells.
+"$ISCC_PATH" "$installer_file"
+if [ $? -ne 0 ]; then
+    echo "Creating the installer failed"
+    exit 1
+fi
+
+echo "Installer created successfully: cpp/installer/Marklens_Cpp_V${version}.exe"

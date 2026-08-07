@@ -1,0 +1,11 @@
+#!/bin/bash
+# AppImage entry point. appimagetool requires this at the AppDir root.
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/bin/lib:${LD_LIBRARY_PATH}"
+
+# QtWebEngine ships its own Chromium, whose setuid sandbox helper cannot work
+# from inside a squashfs mount. Disabling it is what every Qt AppImage does;
+# the alternative is the app failing to start at all.
+export QTWEBENGINE_DISABLE_SANDBOX=1
+
+exec "${HERE}/usr/bin/marklens-cpp" "$@"

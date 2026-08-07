@@ -33,6 +33,22 @@ checks (`test_gui.py`), which launch `smoke_gui.py` (render — image, mermaid,
 table, highlight) and `nav_smoke.py` (clicks a link in the real MainWindow and
 verifies it navigates without trapping) as offscreen subprocesses.
 
+## Package
+
+```bash
+packaging/build_win        # Git Bash or Cygwin -> installer/Marklens_Python_V<ver>.exe
+packaginguild_win.bat    # cmd, same output
+packaging/build_mac        # -> Marklens_Python_V<ver>.dmg  (or `build_mac pkg`)
+packaging/build_linux      # -> dist/Marklens-Python-<ver>-<arch>.AppImage
+```
+
+PyInstaller does the freezing (`packaging/marklens.spec`), collecting PySide6
+wholesale so QtWebEngine's Chromium, its `.pak` resources and its ICU data all
+come along. The shared assets are bundled under `shared/`, which is where
+`assets._shared_dir()` looks when frozen. Needs `pip install -e ".[packaging]"`;
+see [../packaging/README.md](../packaging/README.md) for the per-platform tools
+and for signing.
+
 ## Notes
 
 - No sandbox → no folder-grant machinery. The page's base URL is the

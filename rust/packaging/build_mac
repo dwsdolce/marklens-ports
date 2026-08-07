@@ -1,0 +1,124 @@
+#!/bin/zsh
+#
+# Build the macOS application bundle and a disk image for the Rust port.
+#
+#   rust/packaging/build_mac            # defaults to dmg
+#   rust/packaging/build_mac dmg|app
+#   rust/packaging/build_mac help
+#
+# Produces:
+#   rust/src-tauri/target/release/bundle/macos/Marklens Rust.app
+#   rust/Marklens_Rust_V<version>.dmg   (unless "app" was asked for)
+#
+# Requires Rust (rustup), the Tauri CLI (cargo install tauri-cli
+# --version "^2.0") and Python 3 for the version stamping. Tauri builds the
+# disk image itself, so create-dmg is not needed here as it is for the other
+# two ports.
+#
+# Signing and notarisation are opt-in, because an unsigned build is perfectly
+# usable locally and this repository is public - no Developer ID is baked in.
+# These are the names Tauri's own bundler reads:
+#
+#   export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+#   export APPLE_KEYCHAIN_PROFILE="notarytool-profile"
+#
+# Setting APPLE_SIGNING_IDENTITY makes Tauri sign the app; adding
+# APPLE_KEYCHAIN_PROFILE makes it notarise and staple as well.
+
+# Run from the port's root regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
+
+if [[ $# == 0 ]]
+then
+    format="dmg"
+elif [[ $# == 1 ]]
+then
+    if [[ "$1" == "help" ]]
+    then
+        echo "build_mac [dmg|app]"
+        exit 0
+    fi
+    format="$1"
+    if [[ $format != "dmg" && $format != "app" ]]
+    then
+        echo "Unknown installer format: $format"
+        echo "build_mac [dmg|app]"
+        exit 1
+    fi
+else
+    echo "build_mac [dmg|app]"
+    exit 1
+fi
+
+PYTHON="${PYTHON:-python3}"
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo is not on PATH - install Rust from https://rustup.rs"
+    exit 1
+fi
+if ! cargo tauri --version >/dev/null 2>&1; then
+    echo "The Tauri CLI is not installed"
+    echo "Run: cargo install tauri-cli --version \"^2.0\""
+    exit 1
+fi
+
+echo "Running build for `arch` architecture"
+
+#===============================================
+# Clean-up
+#===============================================
+# The cargo target directory is deliberately left alone - a full rebuild of the
+# Tauri dependency tree costs minutes and nothing in it goes stale between
+# packaging runs. Only the bundle output is cleared.
+rm -rf src-tauri/target/release/bundle
+
+#===============================================
+# Generate the version from the git commit count
+#===============================================
+# The bundle itself carries the three-part version from tauri.conf.json, which
+# Tauri requires to be valid semver; the fourth component is the build number
+# and appears in the image file name, matching the other two ports.
+version=$("$PYTHON" ../tools/gen_version_build.py rust --print)
+if [ $? -ne 0 ]; then
+    echo "Generating the version failed"
+    exit 1
+fi
+echo "Creating installer for version ${version}"
+
+#===============================================
+# Build and bundle
+#===============================================
+(cd src-tauri && cargo tauri build --bundles "$format")
+if [ $? -ne 0 ]; then
+    echo "cargo tauri build failed"
+    exit 1
+fi
+
+if [[ $format == "app" ]]; then
+    echo "Built src-tauri/target/release/bundle/macos/Marklens Rust.app"
+    exit 0
+fi
+
+#===============================================
+# Collect the image under the shared naming convention
+#===============================================
+built=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+if [[ -z "$built" ]]; then
+    echo "No disk image was produced under src-tauri/target/release/bundle/dmg"
+    exit 1
+fi
+
+installer_name="Marklens_Rust_V${version}.dmg"
+test -f $installer_name && rm $installer_name
+cp "$built" "$installer_name"
+if [ $? -ne 0 ]; then
+    echo "Copying the image failed"
+    exit 1
+fi
+
+if [[ -z "$APPLE_SIGNING_IDENTITY" ]]; then
+    echo "APPLE_SIGNING_IDENTITY is not set - ${installer_name} is unsigned."
+    echo "Gatekeeper will warn on first launch; right-click > Open to bypass."
+fi
+
+echo "Done creating ${installer_name}"

@@ -4,6 +4,7 @@
 #include "links.h"
 #include "renderer.h"
 
+#include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -86,6 +87,19 @@ void TestCore::linkCases_data() {
     }
 }
 
+// Separators as the fixture writes them.
+//
+// The fixture is language- *and* platform-neutral, so it spells paths the POSIX
+// way. documentRelativePath deliberately does not: std::filesystem hands back
+// what the host OS wants, which on Windows means backslashes, because that is
+// what gets passed on to the file APIs. The contract being pinned here is which
+// file a link resolves to, not how the separator is spelled, so the separator is
+// normalised before comparing - the same tolerance the render cases use for
+// engine-specific HTML.
+static QString posix(const QString &path) {
+    return QString(path).replace(QDir::separator(), QLatin1Char('/'));
+}
+
 void TestCore::linkCases() {
     QFETCH(QString, href);
     QFETCH(QString, doc);
@@ -96,7 +110,7 @@ void TestCore::linkCases() {
 
     // resolved is only asserted for non-external hrefs (matches the fixture).
     if (external.isEmpty())
-        QCOMPARE(links::documentRelativePath(href, doc).value_or(QString()), resolved);
+        QCOMPARE(posix(links::documentRelativePath(href, doc).value_or(QString())), resolved);
 }
 
 QTEST_MAIN(TestCore)

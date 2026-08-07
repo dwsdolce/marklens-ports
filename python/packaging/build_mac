@@ -1,0 +1,200 @@
+#!/bin/zsh
+#
+# Build the macOS application bundle and a disk image or installer package for
+# the Python port.
+#
+#   python/packaging/build_mac            # defaults to dmg
+#   python/packaging/build_mac dmg|pkg
+#   python/packaging/build_mac help
+#
+# Produces:
+#   python/dist/Marklens Python.app
+#   python/Marklens_Python_V<version>.dmg   (or .pkg)
+#
+# Signing and notarisation are opt-in, because an unsigned build is perfectly
+# usable locally and this repository is public - no Developer ID is baked in.
+# Set them in the environment to enable:
+#
+#   export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+#   export INSTALLER_IDENTITY="Developer ID Installer: Your Name (TEAMID)"
+#   export NOTARY_PROFILE="notarytool-profile"
+#
+# CODESIGN_IDENTITY is also read by packaging/marklens.spec, so the app inside
+# the image is signed as well as the image itself.
+#
+# Requires create-dmg for the dmg format (brew install create-dmg) and a venv
+# with the packaging extra installed: pip install -e ".[packaging]"
+
+# Run from the port's root regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
+
+if [[ $# == 0 ]]
+then
+    format="dmg"
+elif [[ $# == 1 ]]
+then
+    if [[ "$1" == "help" ]]
+    then
+        echo "build_mac [dmg|pkg]"
+        exit 0
+    fi
+    format="$1"
+    if [[ $format != "dmg" && $format != "pkg" ]]
+    then
+        echo "Unknown installer format: $format"
+        echo "build_mac [dmg|pkg]"
+        exit 1
+    fi
+else
+    echo "build_mac [dmg|pkg]"
+    exit 1
+fi
+
+#===============================================
+# Setup the correct python environment
+#===============================================
+# Two locations are accepted: python/.venv, which python/README.md describes,
+# and a shared .venv at the repository root, which is convenient when working
+# on more than one port at a time.
+for candidate in ".venv" "../.venv"; do
+    if [ -f "$candidate/bin/activate" ]; then
+        VENV="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$VENV" ]]; then
+    echo "No virtual environment at python/.venv or ../.venv"
+    echo "Create one, then: pip install -e \".[packaging]\""
+    exit 1
+fi
+
+echo "Activating virtual environment $VENV"
+source "$VENV/bin/activate"
+if [ $? -ne 0 ]; then
+    echo "Activating virtual environment failed"
+    exit 1
+fi
+
+echo "Running build for `arch` architecture"
+
+#===============================================
+# Clean-up
+#===============================================
+# build/ holds both the PyInstaller work directory and installer_version, which
+# is regenerated below; removing the lot keeps a stale version out of the
+# image name.
+rm -rf dist
+rm -rf build
+
+#===============================================
+# Generate the version from the git commit count
+#===============================================
+# Writes python/build/installer_version, which the spec file reads. --print
+# also writes it, so this is one call, not two.
+version=$(python ../tools/gen_version_build.py python --print)
+if [ $? -ne 0 ]; then
+    echo "Generating the version failed"
+    exit 1
+fi
+echo "Creating installer for version ${version}"
+
+#===============================================
+# Run pyinstaller
+#===============================================
+pyinstaller -y packaging/marklens.spec
+if [ $? -ne 0 ]; then
+    echo "Running pyinstaller failed"
+    exit 1
+fi
+
+# COLLECT leaves the plain bundle directory next to the .app; only the .app
+# should end up in the image.
+echo "Removing dist/marklens-py"
+rm -rf dist/marklens-py
+
+#===============================================
+# Create the format.
+#===============================================
+echo "Creating the ${format}"
+installer_name="Marklens_Python_V${version}.${format}"
+test -f $installer_name && rm $installer_name
+
+if [[ $format == "dmg" ]]
+then
+    create-dmg \
+        --volname "Marklens Python $version Install" \
+        --window-pos 1 1 \
+        --window-size 640 400 \
+        --icon-size 110 \
+        --icon "Marklens Python.app" 160 180 \
+        --app-drop-link 460 180 \
+        --hide-extension "Marklens Python.app" \
+        --format ULFO \
+        --volicon "../shared/icon.icns" \
+        $installer_name \
+        "dist/"
+else
+    if [[ -z "$INSTALLER_IDENTITY" ]]; then
+        echo "INSTALLER_IDENTITY is not set - a pkg cannot be built unsigned"
+        echo "Set it, or build a dmg instead: packaging/build_mac dmg"
+        exit 1
+    fi
+    rm -rf packages
+    mkdir packages
+    pkgbuild --root ./dist \
+        --identifier "solutions.ddj.marklens.py" \
+        --version "${version}" \
+        --install-location "/Applications" \
+        packages/MarklensPython.pkg
+    productbuild --package-path ./packages \
+        --package packages/MarklensPython.pkg \
+        --sign "$INSTALLER_IDENTITY" \
+        $installer_name
+fi
+if [ $? -ne 0 ]; then
+    echo "Creating the ${format} failed"
+    exit 1
+fi
+
+#===============================================
+# Sign, notarize and staple - all skipped when unconfigured.
+#===============================================
+if [[ -z "$CODESIGN_IDENTITY" ]]; then
+    echo "CODESIGN_IDENTITY is not set - leaving ${installer_name} unsigned."
+    echo "Gatekeeper will warn on first launch; right-click > Open to bypass."
+    echo "Done creating ${installer_name}"
+    exit 0
+fi
+
+if [[ $format == "dmg" ]]
+then
+    echo "Signing the ${format}"
+    /usr/bin/codesign -s "$CODESIGN_IDENTITY" $installer_name
+    if [ $? -ne 0 ]; then
+        echo "Signing the ${format} failed"
+        exit 1
+    fi
+fi
+
+if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "NOTARY_PROFILE is not set - skipping notarisation."
+    echo "Done creating ${installer_name}"
+    exit 0
+fi
+
+echo "Notarizing the ${format}"
+xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE"
+if [ $? -ne 0 ]; then
+    echo "Notarizing the ${format} failed"
+    exit 1
+fi
+
+echo "Stapling the ${format}"
+xcrun stapler staple $installer_name
+if [ $? -ne 0 ]; then
+    echo "Stapling the ${format} failed"
+    exit 1
+fi
+
+echo "Done creating ${installer_name}"

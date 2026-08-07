@@ -8,11 +8,12 @@ to the system browser, other documents into the viewer.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QFileSystemWatcher, QSettings, QUrl, Signal, Slot
+from PySide6.QtCore import QFileSystemWatcher, QSettings, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -41,7 +42,12 @@ class _Page(QWebEnginePage):
     open_document = Signal(Path)  # a relative link to another document
     document_path: Path | None = None
 
-    def acceptNavigationRequest(  # noqa: N802 (Qt override)
+    # camelCase because it overrides Qt's virtual, not because we like it. A
+    # per-line N802 suppression used to sit here, but pep8-naming is not among
+    # the rules this project enables, so ruff reported it as suppressing
+    # nothing. Adding extend-select = ["N"] under [tool.ruff.lint] would turn
+    # the check on, and the suppression would earn its place back.
+    def acceptNavigationRequest(
         self, url: QUrl | str, nav_type: QWebEnginePage.NavigationType, is_main_frame: bool
     ) -> bool:
         # Qt's stubs allow str, but at runtime it hands us a QUrl; normalize so
@@ -59,9 +65,12 @@ class _Page(QWebEnginePage):
             return False
 
         # Same document, just a #fragment → let the view scroll natively.
-        if url.hasFragment() and self.document_path is not None:
-            if url.toLocalFile() == str(self.document_path):
-                return True
+        if (
+            url.hasFragment()
+            and self.document_path is not None
+            and url.toLocalFile() == str(self.document_path)
+        ):
+            return True
 
         # Another local document → open it in the viewer.
         if url.isLocalFile():
@@ -200,15 +209,51 @@ class MainWindow(QMainWindow):
     _RECENT_KEY = "recentFiles"
     _RECENT_MAX = 10
 
+    @staticmethod
+    def _canonical_recent(path: str | Path) -> str:
+        """The one spelling both Qt ports agree to store.
+
+        This port and the C++ one share a single QSettings store - same
+        organisation and application name - but reached it spelling paths
+        differently: Qt hands back forward slashes (QFileDialog,
+        QUrl::toLocalFile) while ``str(Path)`` is native, so on Windows the
+        same document landed in the list twice. Forward slashes win because
+        that is what the C++ side already works with internally.
+        """
+        return Path(path).as_posix()
+
+    @staticmethod
+    def _recent_key(path: str) -> str:
+        """Comparison key for de-duplication.
+
+        ``normcase`` folds both separators and case on Windows, where
+        filenames are case-insensitive, and is the identity elsewhere.
+        """
+        return os.path.normcase(path)
+
     def _load_recent(self) -> list[str]:
         val = QSettings().value(self._RECENT_KEY)
         if val is None:
             return []
-        return [val] if isinstance(val, str) else list(val)
+        raw = [val] if isinstance(val, str) else list(val)
+        # Canonicalise and de-duplicate on read, so a list written by an older
+        # build (or by the C++ port) is cleaned up on sight rather than needing
+        # a migration step. First occurrence wins: the list is newest-first.
+        seen: set[str] = set()
+        recent: list[str] = []
+        for entry in raw:
+            canonical = self._canonical_recent(entry)
+            key = self._recent_key(canonical)
+            if key not in seen:
+                seen.add(key)
+                recent.append(canonical)
+        return recent
 
     def _add_recent(self, path: Path) -> None:
-        recent = [p for p in self._load_recent() if p != str(path)]
-        recent.insert(0, str(path))
+        canonical = self._canonical_recent(path)
+        key = self._recent_key(canonical)
+        recent = [p for p in self._load_recent() if self._recent_key(p) != key]
+        recent.insert(0, canonical)
         QSettings().setValue(self._RECENT_KEY, recent[: self._RECENT_MAX])
         self._rebuild_recent_menu()
 
