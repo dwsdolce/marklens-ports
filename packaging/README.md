@@ -34,6 +34,22 @@ for. Each has its own display name (`Marklens Python`, `Marklens C++`,
 `Marklens Rust`), its own executable name, its own Windows AppId, and its own
 macOS bundle identifier, so installing one never disturbs another.
 
+## What has actually been run
+
+Everything below was exercised on Windows 11, with CMake 4.4, Visual Studio
+2026 (MSVC 14.51), Qt 6.11.1, Rust 1.97 and Inno Setup 6:
+
+| Port   | Windows                                                    |
+|--------|------------------------------------------------------------|
+| Python | installer built, app launches from the frozen bundle       |
+| C++    | installer built, `ctest` 3/3, app launches from `dist/`    |
+| Rust   | installer built, fixtures 2/2                              |
+
+**macOS and Linux have never been run.** `build_mac` and `build_linux` for all
+three ports are written from the documented behaviour of `macdeployqt`,
+`create-dmg`, `linuxdeploy` and `appimagetool`, not from a working build. Treat
+the first run on either as a debugging session, not a release.
+
 ## Versions
 
 `tools/gen_version_build.py <port>` produces a four-part version: the port's own
