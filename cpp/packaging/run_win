@@ -1,0 +1,63 @@
+#!/bin/bash
+#
+# Run the C++ port, whichever way it was built.
+#
+#   cpp/packaging/run_win [document.md] [args...]
+#
+# The counterpart of run_mac and run_linux: the same command shape on every
+# platform, so "how do I run it" has one answer rather than three.
+#
+# Two builds can exist side by side and this prefers the deployed one:
+#
+#   dist/               packaging/build_win - carries the Qt runtime, so it
+#                       runs with nothing on PATH
+#   build/              a plain `cmake --build` - just the executable, so Qt's
+#                       DLLs have to be found before it will start. Without
+#                       them it exits silently, with no window and no error,
+#                       which is why this script sets PATH rather than leaving
+#                       you to discover that.
+
+cd "$(dirname "$0")/.."
+
+# --- the deployed build, if there is one -----------------------------------
+if [ -x "dist/marklens-cpp.exe" ]; then
+    exec ./dist/marklens-cpp.exe "$@"
+fi
+
+# --- otherwise the development build ---------------------------------------
+# Visual Studio is a multi-config generator, so Release and Debug sit in
+# subdirectories; single-config generators put the executable straight in build/.
+EXE=""
+for candidate in build/Release/marklens-cpp.exe build/Debug/marklens-cpp.exe \
+                 build/marklens-cpp.exe build/marklens-cpp; do
+    [ -x "$candidate" ] && EXE="$candidate" && break
+done
+
+if [ -z "$EXE" ]; then
+    echo "No build found. Build one first:"
+    echo "    packaging/build_win app     # deployed into dist/, runs anywhere"
+    echo "    cmake -B build && cmake --build build --config Release"
+    exit 1
+fi
+
+# The development build has no Qt beside it. Ask CMake where Qt came from -
+# Qt6_DIR is <kit>/lib/cmake/Qt6, so the DLLs are three levels up in bin/.
+if ! command -v windeployqt.exe >/dev/null 2>&1; then
+    for cache in build/CMakeCache.txt build-packaging/CMakeCache.txt; do
+        qt6_dir=$(sed -n 's/^Qt6_DIR:PATH=//p' "$cache" 2>/dev/null | head -1)
+        if [ -n "$qt6_dir" ] && [ "$qt6_dir" != "Qt6_DIR-NOTFOUND" ]; then
+            qt_bin="$(dirname "$(dirname "$(dirname "$qt6_dir")")")/bin"
+            if [ -d "$qt_bin" ]; then
+                # CMake stores a Windows path. Prepending "C:/..." to PATH
+                # splits it on the colon in the drive letter and quietly
+                # produces nonsense, so convert to the POSIX form this shell
+                # actually parses.
+                command -v cygpath >/dev/null 2>&1 && qt_bin="$(cygpath -u "$qt_bin")"
+                export PATH="$qt_bin:$PATH"
+                break
+            fi
+        fi
+    done
+fi
+
+exec "./$EXE" "$@"

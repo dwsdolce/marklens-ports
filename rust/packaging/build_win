@@ -2,7 +2,10 @@
 #
 # Build the Windows installer for the Rust port.
 #
-#   rust/packaging/build_win
+#   rust/packaging/build_win              # build and package
+#   rust/packaging/build_win app          # build only, no installer
+#   rust/packaging/build_win installer    # the default, named explicitly
+#   rust/packaging/build_win help
 #
 # Produces:
 #   rust/installer/Marklens_Rust_V<version>.exe
@@ -21,15 +24,32 @@
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
 
+mode="${1:-installer}"
+case "$mode" in
+    help)
+        echo "build_win [app|installer]"
+        echo "  app        build the executable only, runnable with packaging/run_win"
+        echo "  installer  the above, bundled into an installer (default)"
+        exit 0
+        ;;
+    app|installer) ;;
+    *)
+        echo "Unknown mode: $mode"
+        echo "build_win [app|installer]"
+        exit 1
+        ;;
+esac
+
 PYTHON="${PYTHON:-python}"
 
 if ! command -v cargo >/dev/null 2>&1; then
     echo "cargo is not on PATH - install Rust from https://rustup.rs"
     exit 1
 fi
-if ! cargo tauri --version >/dev/null 2>&1; then
+# The CLI is only needed for bundling; `app` mode is plain cargo.
+if [ "$mode" != "app" ] && ! cargo tauri --version >/dev/null 2>&1; then
     echo "The Tauri CLI is not installed"
-    echo "Run: cargo install tauri-cli --version \"^2.0\""
+    echo "Run: packaging/setup   (or: cargo install tauri-cli --version \"^2.0\" --locked)"
     exit 1
 fi
 
@@ -68,6 +88,19 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 echo "Creating installer for version ${version}"
+
+if [ "$mode" = "app" ]; then
+    # Plain cargo: no bundler, so no NSIS download and no installer. The
+    # frontend is embedded in the binary, so this is complete on its own.
+    (cd src-tauri && cargo build --release)
+    if [ $? -ne 0 ]; then
+        echo "cargo build failed"
+        exit 1
+    fi
+    echo "Built src-tauri/target/release/marklens-rust.exe"
+    echo "Run it with packaging/run_win"
+    exit 0
+fi
 
 #===============================================
 # Build and bundle

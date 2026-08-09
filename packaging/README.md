@@ -18,6 +18,68 @@ cpp/packaging/build_mac dmg
 rust/packaging/build_linux
 ```
 
+## Setup first
+
+Each port has a setup step that leaves it ready to build, and the build scripts
+need nothing exported afterwards:
+
+```bash
+python/packaging/setup     # or: pip install -e ".[packaging]" in a venv
+cpp/packaging/setup        # cpp\packaging\setup.bat in cmd
+rust/packaging/setup       # rust\packaging\setup.bat in cmd
+```
+
+Pass `--check` to any of them to report without changing anything.
+
+They sort requirements into two kinds, and say which is which:
+
+- **Prerequisites** — the C++ toolchain, CMake, Qt 6, the Rust toolchain, the
+  Linux webview packages. Platform SDKs, often behind an account or a package
+  manager wanting root. Setup verifies them and says exactly what is missing
+  and where to get it; it never installs them. Qt's optional *modules* are the
+  one exception: if Qt is present but WebEngine is not, the maintenance tool
+  can add it without an interactive download, so setup offers to.
+- **Dependencies** — md4c for C++, built into `cpp/third_party/`; the Tauri CLI
+  for Rust, via `cargo install`. Python has neither category to worry about,
+  because `pyproject.toml` covers everything once you have a venv.
+
+The asymmetry is real rather than an oversight: `pyproject.toml` and
+`Cargo.toml` fetch dependencies as a matter of course, and C++ has no
+equivalent in the standard toolchain, so `packaging/setup` plus a `third_party/`
+prefix stands in for one.
+
+## Build and run
+
+Every port takes the same two verbs, on every platform:
+
+```bash
+<port>/packaging/build_win  [app|installer]     # build_win.bat in cmd
+<port>/packaging/build_mac  [app|dmg|pkg]
+<port>/packaging/build_linux [app|appimage]     # rust also: deb, rpm
+<port>/packaging/run_win                        # run_win.bat in cmd
+<port>/packaging/run_mac
+<port>/packaging/run_linux
+```
+
+`app` stops once there is something runnable and skips the packaging step,
+which is the fast loop while working. The packaging verb — the default —
+carries on and produces the installer. `help` prints the modes.
+
+`run_*` runs whatever exists, preferring the most finished build, so "how do I
+run it" has one answer per platform rather than one per port. What it finds
+differs, because the three ports do not mean the same thing by "build":
+
+| Port | Preferred | Falls back to |
+|------|-----------|---------------|
+| Python | the frozen PyInstaller bundle | the source, from the venv — this port has no compile step at all |
+| C++ | `dist/`, which carries the Qt runtime | the `build/` tree, with Qt's DLLs put on `PATH` first |
+| Rust | `target/release/`, self-contained | `cargo run --release`, building if needed |
+
+The C++ fallback matters on Windows: a plain `cmake --build` leaves an
+executable that cannot find Qt's DLLs and exits silently, with no window and no
+error. `run_win` reads `Qt6_DIR` out of `CMakeCache.txt` and fixes `PATH`, so
+that failure mode never reaches you.
+
 ## What comes out
 
 | Port   | Windows                       | macOS                        | Linux                                   |

@@ -1,0 +1,31 @@
+#!/bin/zsh
+#
+# Run the Rust port, whichever way it was built.
+#
+#   rust/packaging/run_mac [document.md] [args...]
+#
+# The counterpart of run_win and run_linux. The executable inside the bundle is
+# launched rather than `open`, which detaches and would lose the exit status
+# and any stderr.
+
+cd "$(dirname "$0")/.."
+
+BUNDLE="src-tauri/target/release/bundle/macos/Marklens Rust.app"
+if [ -x "$BUNDLE/Contents/MacOS/marklens-rust" ]; then
+    exec "$BUNDLE/Contents/MacOS/marklens-rust" "$@"
+fi
+
+for candidate in src-tauri/target/release/marklens-rust \
+                 src-tauri/target/debug/marklens-rust; do
+    if [ -x "$candidate" ]; then
+        exec "./$candidate" "$@"
+    fi
+done
+
+if command -v cargo >/dev/null 2>&1; then
+    echo "No build found - building and running with cargo."
+    cd src-tauri && exec cargo run --release -- "$@"
+fi
+
+echo "No build found and cargo is not on PATH. Run packaging/setup first."
+exit 1

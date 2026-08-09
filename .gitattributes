@@ -8,6 +8,10 @@
 */packaging/build_linux  text eol=lf
 */packaging/build_mac    text eol=lf
 */packaging/build_win    text eol=lf
+*/packaging/setup        text eol=lf
+*/packaging/run_linux    text eol=lf
+*/packaging/run_mac      text eol=lf
+*/packaging/run_win      text eol=lf
 *.sh                     text eol=lf
 
 # The Windows shells want the opposite.

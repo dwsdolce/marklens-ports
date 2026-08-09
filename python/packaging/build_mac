@@ -4,6 +4,7 @@
 # the Python port.
 #
 #   python/packaging/build_mac            # defaults to dmg
+#   python/packaging/build_mac app        # build only, no disk image
 #   python/packaging/build_mac dmg|pkg
 #   python/packaging/build_mac help
 #
@@ -35,18 +36,21 @@ elif [[ $# == 1 ]]
 then
     if [[ "$1" == "help" ]]
     then
-        echo "build_mac [dmg|pkg]"
+        echo "build_mac [app|dmg|pkg]"
+        echo "  app  build only, runnable from dist/ with packaging/run_mac"
+        echo "  dmg  the above, plus a disk image (default)"
+        echo "  pkg  the above, plus a signed installer package"
         exit 0
     fi
     format="$1"
-    if [[ $format != "dmg" && $format != "pkg" ]]
+    if [[ $format != "app" && $format != "dmg" && $format != "pkg" ]]
     then
-        echo "Unknown installer format: $format"
-        echo "build_mac [dmg|pkg]"
+        echo "Unknown format: $format"
+        echo "build_mac [app|dmg|pkg]"
         exit 1
     fi
 else
-    echo "build_mac [dmg|pkg]"
+    echo "build_mac [app|dmg|pkg]"
     exit 1
 fi
 
@@ -112,6 +116,11 @@ fi
 # should end up in the image.
 echo "Removing dist/marklens-py"
 rm -rf dist/marklens-py
+
+if [[ $format == "app" ]]; then
+    echo "Built dist/Marklens Python.app - run it with packaging/run_mac"
+    exit 0
+fi
 
 #===============================================
 # Create the format.

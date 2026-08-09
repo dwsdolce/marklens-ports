@@ -32,11 +32,9 @@ if errorlevel 1 (
     echo cmake is not on PATH
     exit /b 1
 )
-if not defined CMAKE_PREFIX_PATH (
-    echo CMAKE_PREFIX_PATH is not set - point it at your Qt 6 installation, e.g.
-    echo   set CMAKE_PREFIX_PATH=C:/Qt/6.8.0/msvc2022_64
-    exit /b 1
-)
+REM CMAKE_PREFIX_PATH is deliberately not required. CMakeLists.txt finds Qt in
+REM the online installer's layout and md4c in third_party\ where
+REM packaging\setup.bat puts it; setting it still overrides both.
 
 echo Running build for %PROCESSOR_ARCHITECTURE% architecture
 
@@ -73,7 +71,7 @@ echo Creating installer for version %VERSION%
 REM ===============================================
 REM Configure and build
 REM ===============================================
-cmake -B "%BUILD_DIR%" -S . -DCMAKE_BUILD_TYPE=Release -DMARKLENS_FULL_VERSION=%VERSION%
+cmake -B "%BUILD_DIR%" -S . -DMARKLENS_FULL_VERSION=%VERSION%
 if errorlevel 1 (
     echo Configuring failed
     exit /b 1
@@ -102,13 +100,30 @@ REM crucially for this app - QtWebEngineProcess.exe together with its Chromium
 REM resources and ICU data.
 set "WINDEPLOYQT="
 for /f "delims=" %%p in ('where windeployqt.exe 2^>nul') do if not defined WINDEPLOYQT set "WINDEPLOYQT=%%p"
-if not defined WINDEPLOYQT if exist "%CMAKE_PREFIX_PATH%\bin\windeployqt.exe" set "WINDEPLOYQT=%CMAKE_PREFIX_PATH%\bin\windeployqt.exe"
+REM Ask the build which Qt it actually used rather than guessing: Qt6_DIR in the
+REM cache is <kit>/lib/cmake/Qt6, so windeployqt is three levels up in bin\.
+if not defined WINDEPLOYQT for /f "tokens=2 delims==" %%d in ('findstr /b "Qt6_DIR:PATH=" "%BUILD_DIR%\CMakeCache.txt" 2^>nul') do (
+    for %%a in ("%%~dpd.") do for %%b in ("%%~dpa.") do for %%c in ("%%~dpb.") do (
+        if exist "%%~fc\bin\windeployqt.exe" set "WINDEPLOYQT=%%~fc\bin\windeployqt.exe"
+    )
+)
+REM CMAKE_PREFIX_PATH is a CMake *list*, so it may hold several roots separated
+REM by semicolons (Qt plus md4c, say). Quote-split on them and try each bin\ directory.
+if not defined WINDEPLOYQT for %%r in ("%CMAKE_PREFIX_PATH:;=" "%") do if not defined WINDEPLOYQT if exist "%%~r\bin\windeployqt.exe" set "WINDEPLOYQT=%%~r\bin\windeployqt.exe"
 if not defined WINDEPLOYQT (
-    echo windeployqt not found - add Qt's bin directory to PATH
+    echo windeployqt not found next to the Qt that CMake used, nor on PATH.
+    echo Run packaging\setup.bat to check the Qt installation.
     exit /b 1
 )
 
-"%WINDEPLOYQT%" --release --no-translations --no-compiler-runtime "%STAGE_DIR%\marklens-cpp.exe"
+REM --skip-plugin-types: `position` is a GPS backend that Qt Positioning brings
+REM along only because QtWebEngine links it for the Geolocation web API, which a
+REM Markdown viewer never calls. Its NMEA plugin wants Qt SerialPort, which is
+REM not installed, so windeployqt warns that it cannot resolve the dependency
+REM and then ships a plugin that could not have loaded anyway. `qmltooling` is
+REM the QML debugger, loaded only when a debugger attaches. Neither belongs in a
+REM release build.
+"%WINDEPLOYQT%" --release --no-translations --no-compiler-runtime --skip-plugin-types position,qmltooling "%STAGE_DIR%\marklens-cpp.exe"
 if errorlevel 1 (
     echo windeployqt failed
     exit /b 1

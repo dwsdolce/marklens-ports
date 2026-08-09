@@ -2,11 +2,15 @@
 #
 # Build the Windows application bundle and installer for the C++ port.
 #
-#   cpp/packaging/build_win
+#   cpp/packaging/build_win              # build, deploy and package
+#   cpp/packaging/build_win app          # build and deploy only, no installer
+#   cpp/packaging/build_win installer    # the default, named explicitly
+#   cpp/packaging/build_win help
 #
 # Produces:
-#   cpp/dist/                                    the deployed application
-#   cpp/installer/Marklens_Cpp_V<version>.exe
+#   cpp/dist/                                    the deployed application,
+#                                                runnable in place
+#   cpp/installer/Marklens_Cpp_V<version>.exe    unless `app` was asked for
 #
 # Runs under Cygwin or Git Bash. Requires:
 #   - CMake and Visual Studio with the C++ toolset. No generator is forced, so
@@ -36,6 +40,22 @@
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
 
+mode="${1:-installer}"
+case "$mode" in
+    help)
+        echo "build_win [app|installer]"
+        echo "  app        build and deploy into dist/, runnable in place"
+        echo "  installer  the above, plus installer/ (default)"
+        exit 0
+        ;;
+    app|installer) ;;
+    *)
+        echo "Unknown mode: $mode"
+        echo "build_win [app|installer]"
+        exit 1
+        ;;
+esac
+
 PYTHON="${PYTHON:-python}"
 BUILD_DIR=build-packaging
 STAGE_DIR=dist
@@ -44,11 +64,10 @@ if ! command -v cmake >/dev/null 2>&1; then
     echo "cmake is not on PATH"
     exit 1
 fi
-if [ -z "$CMAKE_PREFIX_PATH" ]; then
-    echo "CMAKE_PREFIX_PATH is not set - point it at your Qt 6 installation, e.g."
-    echo "  export CMAKE_PREFIX_PATH=\"C:/Qt/6.11.1/msvc2022_64\""
-    exit 1
-fi
+# CMAKE_PREFIX_PATH is deliberately not required. CMakeLists.txt finds Qt in
+# the online installer's layout and md4c in third_party/ where packaging/setup
+# puts it; setting it still overrides both. If either is missing, the configure
+# step below says so and points at packaging/setup.
 
 echo "Running build for $(uname -m) architecture"
 
@@ -87,7 +106,6 @@ echo "Creating installer for version ${version}"
 # Configure and build
 #===============================================
 cmake -B "$BUILD_DIR" -S . \
-    -DCMAKE_BUILD_TYPE=Release \
     -DMARKLENS_FULL_VERSION="$version"
 if [ $? -ne 0 ]; then
     echo "Configuring failed"
@@ -117,6 +135,17 @@ fi
 # resources and ICU data.
 WINDEPLOYQT=$(command -v windeployqt.exe || command -v windeployqt)
 if [ -z "$WINDEPLOYQT" ]; then
+    # Ask the build which Qt it actually used rather than guessing: Qt6_DIR in
+    # the cache is <kit>/lib/cmake/Qt6, so windeployqt is three levels up in
+    # bin/. This also guarantees the deployment tool matches the Qt that built
+    # the executable, which scanning the environment does not.
+    qt6_dir=$(sed -n 's/^Qt6_DIR:PATH=//p' "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | head -1)
+    if [ -n "$qt6_dir" ] && [ "$qt6_dir" != "Qt6_DIR-NOTFOUND" ]; then
+        candidate="$(dirname "$(dirname "$(dirname "$qt6_dir")")")/bin/windeployqt.exe"
+        [ -f "$candidate" ] && WINDEPLOYQT="$candidate"
+    fi
+fi
+if [ -z "$WINDEPLOYQT" ]; then
     # CMAKE_PREFIX_PATH is a CMake *list*, so it may hold several roots
     # separated by semicolons (Qt plus md4c, say). Try each one's bin/.
     saved_ifs=$IFS
@@ -130,15 +159,29 @@ if [ -z "$WINDEPLOYQT" ]; then
     IFS=$saved_ifs
 fi
 if [ -z "$WINDEPLOYQT" ]; then
-    echo "windeployqt not found - add Qt's bin directory to PATH"
+    echo "windeployqt not found next to the Qt that CMake used, nor on PATH."
+    echo "Run packaging/setup to check the Qt installation."
     exit 1
 fi
 
+# --skip-plugin-types: `position` is a GPS backend that Qt Positioning brings
+# along only because QtWebEngine links it for the Geolocation web API, which a
+# Markdown viewer never calls. Its NMEA plugin wants Qt SerialPort, which is
+# not installed, so windeployqt warns that it cannot resolve the dependency
+# and then ships a plugin that could not have loaded anyway. `qmltooling` is
+# the QML debugger, loaded only when a debugger attaches. Neither belongs in a
+# release build.
 "$WINDEPLOYQT" --release --no-translations --no-compiler-runtime \
+    --skip-plugin-types position,qmltooling \
     "$STAGE_DIR/marklens-cpp.exe"
 if [ $? -ne 0 ]; then
     echo "windeployqt failed"
     exit 1
+fi
+
+if [ "$mode" = "app" ]; then
+    echo "Built cpp/dist - run it with packaging/run_win"
+    exit 0
 fi
 
 #===============================================

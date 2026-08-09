@@ -5,10 +5,28 @@ with **comrak**, resolves links, and watches the file; the **frontend**
 (`frontend/`) is HTML/CSS/JS reusing the shared web assets, running in the
 platform's native webview (WKWebView on macOS — no bundled Chromium).
 
-## Requirements
+## Setup
 
-- Rust (rustup) and the Tauri CLI: `cargo install tauri-cli --version "^2.0"`
-- System webview deps (macOS: none extra; Linux: webkit2gtk)
+```bash
+cd rust
+packaging/setup            # checks the environment, installs what it can
+packaging/setup --check    # report only, change nothing
+```
+
+`Cargo.toml` already is this port's manifest — `cargo build` fetches and builds
+every library dependency by itself — so there is far less here than for the C++
+port. What Cargo has no slot for is *tools*: the Tauri CLI is a binary, not a
+crate this links against, so `setup` installs it. It also warms the crate cache,
+which turns the first build from a long silence into a step that reports itself.
+
+**Prerequisites — you install these.** Rust via [rustup](https://rustup.rs), at
+least 1.85; anything older cannot parse the 2024-edition manifests in this
+dependency tree and fails with `feature edition2024 is required` a long way from
+anything informative. On Linux, the webkit2gtk development packages. macOS uses
+WKWebView and Windows uses WebView2, both part of the OS — and the Windows
+installer carries the WebView2 bootstrapper for machines without it.
+
+**Dependencies — `setup` installs these.** The Tauri CLI, via `cargo install`.
 
 ## Run
 
@@ -30,11 +48,22 @@ cargo test            # core: comrak renderer + link resolver vs shared fixtures
 contract the Python and C++ ports satisfy. comrak matched it with no per-engine
 fixups (strikethrough is `<del>` natively).
 
+## Run
+
+```bash
+packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
+packaging/run_mac ../shared/spec/sample/index.md
+packaging/run_linux ../shared/spec/sample/index.md
+```
+
+Same command shape as the other two ports. It prefers a release build and falls
+back to `cargo run --release`, building if there is nothing there yet.
+
 ## Package
 
 ```bash
 packaging/build_win        # Git Bash or Cygwin -> installer/Marklens_Rust_V<ver>.exe
-packaginguild_win.bat    # cmd, same output
+packaging\build_win.bat    # cmd, same output
 packaging/build_mac        # -> Marklens_Rust_V<ver>.dmg  (or `build_mac app`)
 packaging/build_linux      # -> dist/Marklens-Rust-<ver>-{AppImage,deb}
 ```

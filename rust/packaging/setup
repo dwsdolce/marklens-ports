@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+# Set the Rust port up so the build scripts run with no further configuration.
+#
+#   rust/packaging/setup            # check, and install what it can
+#   rust/packaging/setup --check    # report only, change nothing
+#
+# There is far less to do here than for the C++ port, because Cargo.toml
+# already is this port's manifest: `cargo build` fetches and builds every
+# library dependency by itself. What Cargo has no slot for is *tools* -- the
+# Tauri CLI is a binary, not a crate this links against -- and the system
+# webview, which is a platform component rather than a dependency.
+#
+# So, in the same two categories the C++ port's setup uses:
+#
+#   Prerequisites  A Rust toolchain, and on Linux the webkit2gtk development
+#                  packages. Verified and explained, never installed here.
+#
+#   Dependencies   The Tauri CLI. `cargo install` handles it, so this does.
+
+cd "$(dirname "$0")/.."
+
+CHECK_ONLY=0
+if [ "$1" = "--check" ]; then
+    CHECK_ONLY=1
+elif [ -n "$1" ]; then
+    echo "usage: setup [--check]"
+    exit 1
+fi
+
+missing=0
+advice=""
+
+ok()   { printf '  %-8s %s\n' "ok" "$1"; }
+bad()  { printf '  %-8s %s\n' "MISSING" "$1"; missing=$((missing + 1)); }
+howto() { advice="$advice
+$1"; }
+
+echo
+echo "Marklens Rust - build environment"
+echo
+echo "Prerequisites (install these yourself)"
+
+#===============================================
+# Rust toolchain
+#===============================================
+if command -v cargo >/dev/null 2>&1; then
+    cargo_version="$(cargo --version | awk '{print $2}')"
+    # The dependency tree needs a toolchain new enough for the 2024 edition;
+    # older ones fail while resolving, a long way from anything informative.
+    major="${cargo_version%%.*}"
+    minor="$(echo "$cargo_version" | cut -d. -f2)"
+    if [ "$major" -gt 1 ] || [ "$minor" -ge 85 ]; then
+        ok "cargo $cargo_version"
+    else
+        bad "cargo $cargo_version is too old"
+        howto "  rust       rustup update
+             Anything before 1.85 cannot parse the 2024-edition manifests in
+             this dependency tree; it fails with 'feature edition2024 is
+             required' while resolving."
+    fi
+else
+    bad "Rust toolchain"
+    howto "  rust       https://rustup.rs"
+fi
+
+#===============================================
+# System webview
+#===============================================
+case "$(uname -s)" in
+    Linux)
+        if command -v pkg-config >/dev/null 2>&1 && \
+           pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+            ok "webkit2gtk"
+        else
+            bad "webkit2gtk development files"
+            howto "  webview    apt install libwebkit2gtk-4.1-dev build-essential curl wget \\
+                            file libxdo-dev libssl-dev libayatana-appindicator3-dev \\
+                            librsvg2-dev"
+        fi
+        ;;
+    Darwin)
+        ok "WKWebView (part of macOS)"
+        ;;
+    *)
+        # WebView2 ships with Windows 11 and current Windows 10. The installer
+        # carries the bootstrapper for machines without it, so a miss here is
+        # only a problem for running the app straight out of cargo build.
+        if [ -d "/c/Program Files (x86)/Microsoft/EdgeWebView/Application" ] || \
+           [ -d "/c/Program Files/Microsoft/EdgeWebView/Application" ]; then
+            ok "WebView2 runtime"
+        else
+            ok "WebView2 runtime not detected - the installer bundles it"
+        fi
+        ;;
+esac
+
+#===============================================
+# Dependencies
+#===============================================
+echo
+echo "Dependencies (this script installs these)"
+
+if cargo tauri --version >/dev/null 2>&1; then
+    ok "tauri-cli $(cargo tauri --version 2>/dev/null | awk '{print $2}')"
+elif [ "$CHECK_ONLY" -eq 1 ]; then
+    bad "tauri-cli - re-run without --check to install it"
+elif ! command -v cargo >/dev/null 2>&1; then
+    bad "tauri-cli - needs a Rust toolchain first"
+else
+    echo "  ....     installing tauri-cli (a few minutes, it builds from source) ..."
+    if cargo install tauri-cli --version "^2.0" --locked >/dev/null 2>&1 &&
+       cargo tauri --version >/dev/null 2>&1; then
+        ok "tauri-cli $(cargo tauri --version 2>/dev/null | awk '{print $2}')"
+    else
+        bad "tauri-cli - the install failed"
+        howto "  tauri-cli  cargo install tauri-cli --version \"^2.0\" --locked"
+    fi
+fi
+
+# Cargo.toml covers the rest; warming the cache here turns the first build from
+# a long silence into a step that has already reported its progress.
+if [ "$CHECK_ONLY" -eq 0 ] && command -v cargo >/dev/null 2>&1; then
+    echo "  ....     fetching crate dependencies ..."
+    if (cd src-tauri && cargo fetch >/dev/null 2>&1); then
+        ok "crate dependencies fetched (Cargo.toml)"
+    else
+        bad "cargo fetch failed - check your network"
+    fi
+fi
+
+#===============================================
+# Verdict
+#===============================================
+echo
+if [ "$missing" -gt 0 ]; then
+    echo "$missing thing(s) still needed:"
+    echo "$advice"
+    echo
+    echo "Install them and re-run this script."
+    exit 1
+fi
+
+echo "Ready. Run or test with:"
+echo "    cd src-tauri && cargo run -- ../../shared/spec/sample/index.md"
+echo "    cd src-tauri && cargo test"
+echo "or package with:"
+echo "    packaging/build_win     (or build_mac, build_linux)"

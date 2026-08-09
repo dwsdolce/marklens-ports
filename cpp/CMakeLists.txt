@@ -1,21 +1,104 @@
 cmake_minimum_required(VERSION 3.19)
-project(marklens VERSION 0.1.0 LANGUAGES CXX)
+
+# Single-config generators (Makefiles, Ninja) need a build type; multi-config
+# ones (Visual Studio, Xcode) choose it at build time with --config and warn
+# that a CMAKE_BUILD_TYPE went unused. Defaulting it here rather than passing
+# it from the build scripts keeps that warning out of every Windows build.
+get_property(_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT _multi_config AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+# C as well as C++: md4c is a C library, and when it is not installed on the
+# system this build compiles its sources directly (see below).
+project(marklens VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- find the dependencies where they normally land -------------------------
+# Configuring should work from a clean checkout with Qt and md4c installed in
+# their usual places, without the caller exporting anything first. An explicit
+# CMAKE_PREFIX_PATH, QTDIR or MD4C_ROOT always wins over what is guessed here.
+#
+# On macOS and Linux the package managers put both dependencies somewhere the
+# default search already covers. Windows has no such convention, so the Qt
+# online installer's layout is searched directly.
+if(WIN32 AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
+    set(_qt_hint "$ENV{QTDIR}")
+    if(NOT _qt_hint)
+        # C:/Qt/<version>/<kit> - newest version first, and only a kit that
+        # actually carries WebEngine, which is a separate optional download.
+        file(GLOB _qt_kits "C:/Qt/*/msvc*_64" "C:/Qt/*/mingw*_64")
+        list(SORT _qt_kits COMPARE NATURAL ORDER DESCENDING)
+        foreach(_kit IN LISTS _qt_kits)
+            if(EXISTS "${_kit}/lib/cmake/Qt6WebEngineWidgets")
+                set(_qt_hint "${_kit}")
+                break()
+            endif()
+        endforeach()
+    endif()
+    if(_qt_hint)
+        message(STATUS "Found Qt: ${_qt_hint}")
+        list(APPEND CMAKE_PREFIX_PATH "${_qt_hint}")
+    endif()
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets WebEngineCore Test)
 qt_standard_project_setup()
 
-# --- md4c (Homebrew, no CMake config of its own) ---------------------------
-find_path(MD4C_INCLUDE_DIR md4c-html.h HINTS /opt/homebrew/opt/md4c/include /usr/local/include)
-find_library(MD4C_LIB md4c HINTS /opt/homebrew/opt/md4c/lib /usr/local/lib)
-find_library(MD4C_HTML_LIB md4c-html HINTS /opt/homebrew/opt/md4c/lib /usr/local/lib)
-if(NOT MD4C_INCLUDE_DIR OR NOT MD4C_HTML_LIB OR NOT MD4C_LIB)
-    message(FATAL_ERROR "md4c not found (brew install md4c)")
+# --- md4c ------------------------------------------------------------------
+# Two ways to get it, in order of preference.
+#
+# 1. Installed on the system. Homebrew and the Linux distributions put it where
+#    the default search already looks, so this is the normal path there.
+# 2. Compiled from the sources packaging/setup clones into third_party/md4c.
+#    Windows has no md4c package, so this is the normal path there.
+#
+# Its own CMakeLists is deliberately not used for (2). It hardcodes the static
+# MSVC runtime -- it strips /MD and appends /MT, so a command-line override
+# cannot win -- which mixes CRTs with everything else in the executable. That
+# earns a LNK4098 warning and risks memory allocated by one runtime being freed
+# by the other. Three C files are not worth that, so they are compiled here
+# with the same settings as the rest of the build.
+set(MD4C_HINT_DIRS
+    ${MD4C_ROOT}
+    $ENV{MD4C_ROOT}
+    /opt/homebrew/opt/md4c
+    /usr/local
+    C:/vcpkg/installed/x64-windows
+)
+list(TRANSFORM MD4C_HINT_DIRS APPEND "/include" OUTPUT_VARIABLE MD4C_INCLUDE_HINTS)
+list(TRANSFORM MD4C_HINT_DIRS APPEND "/lib" OUTPUT_VARIABLE MD4C_LIB_HINTS)
+
+find_path(MD4C_INCLUDE_DIR md4c-html.h HINTS ${MD4C_INCLUDE_HINTS})
+find_library(MD4C_LIB md4c HINTS ${MD4C_LIB_HINTS})
+find_library(MD4C_HTML_LIB md4c-html HINTS ${MD4C_LIB_HINTS})
+
+add_library(marklens_md4c INTERFACE)
+
+set(MD4C_VENDORED "${CMAKE_CURRENT_SOURCE_DIR}/third_party/md4c")
+
+if(MD4C_INCLUDE_DIR AND MD4C_LIB AND MD4C_HTML_LIB)
+    message(STATUS "Found md4c: ${MD4C_LIB}")
+    target_include_directories(marklens_md4c INTERFACE ${MD4C_INCLUDE_DIR})
+    target_link_libraries(marklens_md4c INTERFACE ${MD4C_HTML_LIB} ${MD4C_LIB})
+elseif(EXISTS "${MD4C_VENDORED}/src/md4c-html.h")
+    message(STATUS "Using md4c sources: ${MD4C_VENDORED}")
+    add_library(md4c_vendored STATIC
+        "${MD4C_VENDORED}/src/md4c.c"
+        "${MD4C_VENDORED}/src/md4c-html.c"
+        "${MD4C_VENDORED}/src/entity.c"
+    )
+    target_include_directories(md4c_vendored PUBLIC "${MD4C_VENDORED}/src")
+    target_link_libraries(marklens_md4c INTERFACE md4c_vendored)
+else()
+    message(FATAL_ERROR
+        "md4c not found. Run packaging/setup, which fetches it into "
+        "third_party/, or install it yourself and set MD4C_ROOT.")
 endif()
 
-# Absolute path to ../shared, baked in (dev build, not a distributable bundle).
+# Absolute path to ../shared, baked in as the fallback for development
+# builds; see assets::sharedDir(), which prefers a copy beside the binary.
 get_filename_component(SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared" ABSOLUTE)
 
 # --- core: renderer + links + assets, shared by app and tests --------------
@@ -24,8 +107,8 @@ add_library(marklens_core STATIC
     src/links.cpp
     src/assets.cpp
 )
-target_include_directories(marklens_core PUBLIC src ${MD4C_INCLUDE_DIR})
-target_link_libraries(marklens_core PUBLIC Qt6::Core ${MD4C_HTML_LIB} ${MD4C_LIB})
+target_include_directories(marklens_core PUBLIC src)
+target_link_libraries(marklens_core PUBLIC Qt6::Core marklens_md4c)
 target_compile_definitions(marklens_core PUBLIC MARKLENS_SHARED_DIR="${SHARED_DIR}")
 
 # --- GUI: window + page, shared by the app and the nav test ----------------

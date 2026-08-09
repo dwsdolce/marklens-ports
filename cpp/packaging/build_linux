@@ -2,7 +2,10 @@
 #
 # Build the Linux application bundle and an AppImage for the C++ port.
 #
-#   cpp/packaging/build_linux
+#   cpp/packaging/build_linux            # build, deploy and package
+#   cpp/packaging/build_linux app        # build and deploy only, no AppImage
+#   cpp/packaging/build_linux appimage   # the default, named explicitly
+#   cpp/packaging/build_linux help
 #
 # Produces:
 #   cpp/dist/                                       the staged application
@@ -23,6 +26,22 @@
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
+
+mode="${1:-appimage}"
+case "$mode" in
+    help)
+        echo "build_linux [app|appimage]"
+        echo "  app       build and deploy into dist/, runnable in place"
+        echo "  appimage  the above, plus an AppImage (default)"
+        exit 0
+        ;;
+    app|appimage) ;;
+    *)
+        echo "Unknown mode: $mode"
+        echo "build_linux [app|appimage]"
+        exit 1
+        ;;
+esac
 
 PYTHON="${PYTHON:-python3}"
 BUILD_DIR=build-packaging
@@ -59,7 +78,6 @@ echo "Creating AppImage for version ${VERSION}"
 # Configure and build
 #===============================================
 cmake -B "$BUILD_DIR" -S . \
-    -DCMAKE_BUILD_TYPE=Release \
     -DMARKLENS_FULL_VERSION="$VERSION"
 if [ $? -ne 0 ]; then
     echo "Configuring failed"
@@ -70,6 +88,21 @@ cmake --build "$BUILD_DIR" --config Release
 if [ $? -ne 0 ]; then
     echo "Building failed"
     exit 1
+fi
+
+if [ "$mode" = "app" ]; then
+    # Stage into dist/ directly. The AppImage path below installs into the
+    # AppDir instead, so this needs its own install step rather than an early
+    # exit - without it dist/ would be empty. Qt is not deployed in; the app
+    # runs against the system Qt, which is what a developer wants and what
+    # packaging/run_linux expects.
+    cmake --install "$BUILD_DIR" --config Release --prefix "$STAGE_DIR"
+    if [ $? -ne 0 ]; then
+        echo "Installing to ${STAGE_DIR} failed"
+        exit 1
+    fi
+    echo "Built $STAGE_DIR - run it with packaging/run_linux"
+    exit 0
 fi
 
 #===============================================

@@ -3,6 +3,7 @@
 # Build the Linux packages for the Rust port.
 #
 #   rust/packaging/build_linux                 # AppImage and .deb
+#   rust/packaging/build_linux app             # build only, no packages
 #   rust/packaging/build_linux appimage|deb|rpm
 #
 # Produces (under rust/dist/):
@@ -26,8 +27,14 @@ cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-python3}"
 
 if [ $# -gt 1 ]; then
-    echo "build_linux [appimage|deb|rpm]"
+    echo "build_linux [app|appimage|deb|rpm]"
     exit 1
+fi
+if [ "$1" = "help" ]; then
+    echo "build_linux [app|appimage|deb|rpm]"
+    echo "  app  build the executable only, runnable with packaging/run_linux"
+    echo "  the rest are bundle formats; the default is appimage,deb"
+    exit 0
 fi
 BUNDLES="${1:-appimage,deb}"
 
@@ -35,7 +42,8 @@ if ! command -v cargo >/dev/null 2>&1; then
     echo "cargo is not on PATH - install Rust from https://rustup.rs"
     exit 1
 fi
-if ! cargo tauri --version >/dev/null 2>&1; then
+# The CLI is only needed for bundling; `app` mode is plain cargo.
+if [ "$BUNDLES" != "app" ] && ! cargo tauri --version >/dev/null 2>&1; then
     echo "The Tauri CLI is not installed"
     echo "Run: cargo install tauri-cli --version \"^2.0\""
     exit 1
@@ -65,6 +73,17 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 echo "Creating packages for version ${VERSION}"
+
+if [ "$BUNDLES" = "app" ]; then
+    (cd src-tauri && cargo build --release)
+    if [ $? -ne 0 ]; then
+        echo "cargo build failed"
+        exit 1
+    fi
+    echo "Built src-tauri/target/release/marklens-rust"
+    echo "Run it with packaging/run_linux"
+    exit 0
+fi
 
 #===============================================
 # Build and bundle

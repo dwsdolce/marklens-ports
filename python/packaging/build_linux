@@ -2,7 +2,10 @@
 #
 # Build the Linux application bundle and an AppImage for the Python port.
 #
-#   python/packaging/build_linux
+#   python/packaging/build_linux            # build and package
+#   python/packaging/build_linux app        # build only, no AppImage
+#   python/packaging/build_linux appimage   # the default, named explicitly
+#   python/packaging/build_linux help
 #
 # Produces:
 #   python/dist/marklens-py/                              the PyInstaller bundle
@@ -14,6 +17,22 @@
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
+
+mode="${1:-appimage}"
+case "$mode" in
+    help)
+        echo "build_linux [app|appimage]"
+        echo "  app  build only, runnable from dist/ with packaging/run_linux"
+        echo "  appimage  the above, plus an AppImage (default)"
+        exit 0
+        ;;
+    app|appimage) ;;
+    *)
+        echo "Unknown mode: $mode"
+        echo "build_linux [app|appimage]"
+        exit 1
+        ;;
+esac
 
 #===============================================
 # Setup the correct python environment
@@ -71,6 +90,11 @@ pyinstaller -y packaging/marklens.spec
 if [ $? -ne 0 ]; then
     echo "Running pyinstaller failed"
     exit 1
+fi
+
+if [ "$mode" = "app" ]; then
+    echo "Built python/dist/marklens-py - run it with packaging/run_linux"
+    exit 0
 fi
 
 #===============================================

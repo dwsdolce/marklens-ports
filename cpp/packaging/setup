@@ -1,0 +1,221 @@
+#!/bin/bash
+#
+# Set the C++ port up so the build scripts run with no further configuration.
+#
+#   cpp/packaging/setup            # check, and install what it can
+#   cpp/packaging/setup --check    # report only, change nothing
+#
+# This is the counterpart of `pip install -e ".[packaging]"` for the Python
+# port. C++ has no manifest format that fetches dependencies, so this script
+# stands in for one. It sorts the requirements into two kinds:
+#
+#   Prerequisites  A C++ toolchain, CMake, and Qt 6. Platform SDKs, measured in
+#                  gigabytes, often behind an account or a package manager that
+#                  wants root. This script verifies them and tells you exactly
+#                  what to install, but never installs them itself - the same
+#                  standing the Python interpreter has for the Python port.
+#
+#   Dependencies   md4c. Small and MIT, so this script fetches its sources
+#                  into third_party/ and CMakeLists.txt compiles them as part
+#                  of the build. Its own CMakeLists is deliberately not used:
+#                  it hardcodes the static MSVC runtime, which mixes CRTs with
+#                  the rest of the executable and earns a LNK4098 warning.
+#
+# The one exception is Qt's optional *modules*. If Qt is already installed but
+# WebEngine is missing, the maintenance tool can add it without an interactive
+# download, so this offers to - Qt is present by then, only incomplete.
+
+cd "$(dirname "$0")/.."
+
+CHECK_ONLY=0
+if [ "$1" = "--check" ]; then
+    CHECK_ONLY=1
+elif [ -n "$1" ]; then
+    echo "usage: setup [--check]"
+    exit 1
+fi
+
+THIRD_PARTY="$(pwd)/third_party"
+MD4C_SRC="$THIRD_PARTY/md4c"
+
+missing=0
+advice=""
+
+ok()   { printf '  %-8s %s\n' "ok" "$1"; }
+bad()  { printf '  %-8s %s\n' "MISSING" "$1"; missing=$((missing + 1)); }
+howto() { advice="$advice
+$1"; }
+
+echo
+echo "Marklens C++ - build environment"
+echo
+echo "Prerequisites (install these yourself)"
+
+#===============================================
+# CMake
+#===============================================
+if command -v cmake >/dev/null 2>&1; then
+    ok "cmake $(cmake --version | head -1 | awk '{print $3}')"
+else
+    bad "cmake"
+    howto "  cmake      https://cmake.org/download/
+             or: brew install cmake / apt install cmake"
+fi
+
+#===============================================
+# C++ toolchain - verified per platform, never installed
+#===============================================
+case "$(uname -s)" in
+    Darwin)
+        if xcode-select -p >/dev/null 2>&1; then
+            ok "Xcode command line tools"
+        else
+            bad "C++ toolchain"
+            howto "  compiler   xcode-select --install"
+        fi
+        ;;
+    Linux)
+        if command -v c++ >/dev/null 2>&1; then
+            ok "$(c++ --version | head -1)"
+        else
+            bad "C++ toolchain"
+            howto "  compiler   apt install build-essential
+             or: dnf groupinstall 'Development Tools'"
+        fi
+        ;;
+    *)
+        # Windows. CMake locates MSVC itself, so only presence is checked.
+        VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+        vs_name=""
+        [ -x "$VSWHERE" ] && vs_name="$("$VSWHERE" -products '*' -latest \
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
+            -property displayName 2>/dev/null | head -1)"
+        if [ -n "$vs_name" ]; then
+            ok "$vs_name"
+        else
+            bad "C++ toolchain (MSVC)"
+            howto "  compiler   https://visualstudio.microsoft.com/downloads/
+             Install Visual Studio (or Build Tools) with the
+             'Desktop development with C++' workload."
+        fi
+        ;;
+esac
+
+#===============================================
+# Qt 6 - the same search CMakeLists.txt does
+#===============================================
+qt_kit="$QTDIR"
+if [ -z "$qt_kit" ]; then
+    for candidate in $(ls -d /c/Qt/*/msvc*_64 /c/Qt/*/mingw*_64 2>/dev/null | sort -Vr); do
+        [ -d "$candidate/lib/cmake/Qt6Core" ] && qt_kit="$candidate" && break
+    done
+fi
+if [ -z "$qt_kit" ] && command -v brew >/dev/null 2>&1; then
+    qt_kit="$(brew --prefix qt 2>/dev/null)"
+    [ -d "$qt_kit/lib/cmake/Qt6Core" ] || qt_kit=""
+fi
+if [ -z "$qt_kit" ]; then
+    for candidate in /usr/lib/*/cmake/Qt6 /usr/lib/cmake/Qt6; do
+        [ -d "$candidate" ] && qt_kit="/usr" && break
+    done
+fi
+
+if [ -z "$qt_kit" ]; then
+    bad "Qt 6"
+    howto "  Qt 6       https://www.qt.io/download-qt-installer
+             Needs a Qt account and several gigabytes, so it cannot be
+             installed from here. Select Qt 6 for your compiler, and tick
+             Qt WebEngine, Qt WebChannel and Qt Positioning under
+             Additional Libraries.
+             macOS: brew install qt   Linux: your distribution's qt6 packages"
+else
+    ok "Qt 6 at $qt_kit"
+
+    # WebEngine is an optional download, and needs WebChannel and Positioning,
+    # which the maintenance tool does not always pull in alongside it.
+    missing_modules=""
+    for module in Widgets Test WebEngineWidgets WebEngineCore WebChannel Positioning; do
+        [ -d "$qt_kit/lib/cmake/Qt6$module" ] || missing_modules="$missing_modules $module"
+    done
+
+    if [ -z "$missing_modules" ]; then
+        ok "Qt modules: WebEngine, WebChannel, Positioning"
+    else
+        MAINTENANCE="/c/Qt/MaintenanceTool.exe"
+        if [ "$CHECK_ONLY" -eq 0 ] && [ -x "$MAINTENANCE" ]; then
+            echo "  ....     adding Qt modules:$missing_modules"
+            # C:/Qt/6.11.1/msvc2022_64 -> version 6.11.1, kit msvc2022_64
+            qt_tag="$(basename "$(dirname "$qt_kit")" | tr -d '.')"
+            qt_kit_name="$(basename "$qt_kit")"
+            "$MAINTENANCE" --accept-licenses --accept-obligations \
+                --default-answer --confirm-command install \
+                "extensions.qtwebengine.$qt_tag.win64_$qt_kit_name" \
+                "qt.qt6.$qt_tag.addons.qtwebchannel" \
+                "qt.qt6.$qt_tag.addons.qtpositioning" >/dev/null 2>&1
+            still_missing=""
+            for module in $missing_modules; do
+                [ -d "$qt_kit/lib/cmake/Qt6$module" ] || still_missing="$still_missing $module"
+            done
+            if [ -z "$still_missing" ]; then
+                ok "Qt modules: WebEngine, WebChannel, Positioning (installed)"
+            else
+                bad "Qt modules:$still_missing"
+                howto "  Qt modules Run: $MAINTENANCE search qtwebengine
+             then install the package for your Qt version and kit, plus
+             qt.qt6.<version>.addons.qtwebchannel and .qtpositioning"
+            fi
+        else
+            bad "Qt modules:$missing_modules"
+            howto "  Qt modules Add them with the Qt maintenance tool:
+             Qt WebEngine, Qt WebChannel and Qt Positioning under
+             Additional Libraries for your Qt version."
+        fi
+    fi
+fi
+
+#===============================================
+# Dependencies - built here
+#===============================================
+echo
+echo "Dependencies (this script installs these)"
+
+if [ -f "$MD4C_SRC/src/md4c-html.h" ]; then
+    ok "md4c sources in third_party/md4c"
+elif [ -f /opt/homebrew/opt/md4c/include/md4c-html.h ] ||
+     [ -f /usr/local/include/md4c-html.h ] || [ -f /usr/include/md4c-html.h ]; then
+    ok "md4c (already installed system-wide)"
+elif [ "$CHECK_ONLY" -eq 1 ]; then
+    bad "md4c - re-run without --check to fetch it"
+elif ! command -v git >/dev/null 2>&1; then
+    bad "md4c - needs git to fetch the sources"
+else
+    echo "  ....     fetching md4c sources into third_party/ ..."
+    mkdir -p "$THIRD_PARTY"
+    rm -rf "$MD4C_SRC"
+    if git clone --depth 1 https://github.com/mity/md4c.git "$MD4C_SRC" >/dev/null 2>&1 &&
+       [ -f "$MD4C_SRC/src/md4c-html.h" ]; then
+        ok "md4c sources in third_party/md4c"
+    else
+        bad "md4c - the clone failed"
+        howto "  md4c       git clone https://github.com/mity/md4c cpp/third_party/md4c
+             or install it yourself and set MD4C_ROOT=<prefix>"
+    fi
+fi
+
+#===============================================
+# Verdict
+#===============================================
+echo
+if [ "$missing" -gt 0 ]; then
+    echo "$missing thing(s) still needed:"
+    echo "$advice"
+    echo
+    echo "Install them and re-run this script."
+    exit 1
+fi
+
+echo "Ready. Build and test with:"
+echo "    cmake -B build && cmake --build build --config Release"
+echo "    ctest --test-dir build --output-on-failure -C Release"
+echo "or package with:"
+echo "    packaging/build_win     (or build_mac, build_linux)"

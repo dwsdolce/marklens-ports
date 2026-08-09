@@ -33,11 +33,24 @@ checks (`test_gui.py`), which launch `smoke_gui.py` (render — image, mermaid,
 table, highlight) and `nav_smoke.py` (clicks a link in the real MainWindow and
 verifies it navigates without trapping) as offscreen subprocesses.
 
+## Run
+
+```bash
+packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
+packaging/run_mac ../shared/spec/sample/index.md
+packaging/run_linux ../shared/spec/sample/index.md
+```
+
+Same command shape as the other two ports. This one has no compile step, so it
+prefers a frozen PyInstaller bundle if you have built one and otherwise runs
+the source from the venv — which is what you want while working, and identical
+to the `python -m marklens` above.
+
 ## Package
 
 ```bash
 packaging/build_win        # Git Bash or Cygwin -> installer/Marklens_Python_V<ver>.exe
-packaginguild_win.bat    # cmd, same output
+packaging\build_win.bat    # cmd, same output
 packaging/build_mac        # -> Marklens_Python_V<ver>.dmg  (or `build_mac pkg`)
 packaging/build_linux      # -> dist/Marklens-Python-<ver>-<arch>.AppImage
 ```

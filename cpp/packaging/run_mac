@@ -1,0 +1,27 @@
+#!/bin/zsh
+#
+# Run the C++ port, whichever way it was built.
+#
+#   cpp/packaging/run_mac [document.md] [args...]
+#
+# The counterpart of run_win and run_linux: the same command shape on every
+# platform, so "how do I run it" has one answer rather than three.
+
+cd "$(dirname "$0")/.."
+
+APP_NAME="Marklens C++"
+
+# `open` is not used here: it detaches, so the exit status and any stderr from
+# the app would be lost. Launching the executable inside the bundle keeps this
+# script's output attached to the terminal, which is the point of running it
+# this way rather than double-clicking.
+for bundle in "dist/${APP_NAME}.app" "build/${APP_NAME}.app"; do
+    if [ -x "$bundle/Contents/MacOS/${APP_NAME}" ]; then
+        exec "$bundle/Contents/MacOS/${APP_NAME}" "$@"
+    fi
+done
+
+echo "No build found. Build one first:"
+echo "    packaging/build_mac app     # deployed into dist/, runs anywhere"
+echo "    cmake -B build && cmake --build build"
+exit 1

@@ -4,6 +4,7 @@
 # the C++ port.
 #
 #   cpp/packaging/build_mac            # defaults to dmg
+#   cpp/packaging/build_mac app        # build and deploy only, no disk image
 #   cpp/packaging/build_mac dmg|pkg
 #   cpp/packaging/build_mac help
 #
@@ -32,18 +33,21 @@ elif [[ $# == 1 ]]
 then
     if [[ "$1" == "help" ]]
     then
-        echo "build_mac [dmg|pkg]"
+        echo "build_mac [app|dmg|pkg]"
+        echo "  app  build and deploy into dist/, runnable in place"
+        echo "  dmg  the above, plus a disk image (default)"
+        echo "  pkg  the above, plus a signed installer package"
         exit 0
     fi
     format="$1"
-    if [[ $format != "dmg" && $format != "pkg" ]]
+    if [[ $format != "app" && $format != "dmg" && $format != "pkg" ]]
     then
-        echo "Unknown installer format: $format"
-        echo "build_mac [dmg|pkg]"
+        echo "Unknown format: $format"
+        echo "build_mac [app|dmg|pkg]"
         exit 1
     fi
 else
-    echo "build_mac [dmg|pkg]"
+    echo "build_mac [app|dmg|pkg]"
     exit 1
 fi
 
@@ -51,10 +55,9 @@ PYTHON="${PYTHON:-python3}"
 BUILD_DIR=build-packaging
 STAGE_DIR=dist
 APP_NAME="Marklens C++"
-# Homebrew's Qt has no CMake config on the default prefix path, and md4c has
-# none at all - CMakeLists.txt finds md4c by hand, but Qt needs pointing at.
-: ${CMAKE_PREFIX_PATH:=$(brew --prefix qt 2>/dev/null)}
-export CMAKE_PREFIX_PATH
+# CMakeLists.txt finds Homebrew's Qt and md4c on its own, and packaging/setup
+# will have built md4c into third_party/ if it was not already installed.
+# Setting CMAKE_PREFIX_PATH is only an override for a Qt somewhere unusual.
 
 if ! command -v cmake >/dev/null 2>&1; then
     echo "cmake is not on PATH (brew install cmake)"
@@ -86,7 +89,6 @@ echo "Creating installer for version ${version}"
 # Configure and build
 #===============================================
 cmake -B "$BUILD_DIR" -S . \
-    -DCMAKE_BUILD_TYPE=Release \
     -DMARKLENS_FULL_VERSION="$version"
 if [ $? -ne 0 ]; then
     echo "Configuring failed"
@@ -114,11 +116,20 @@ fi
 # macdeployqt copies the Qt frameworks and plugins in and rewrites the install
 # names, including QtWebEngineProcess.app and its Chromium resources.
 MACDEPLOYQT=$(command -v macdeployqt)
-if [ -z "$MACDEPLOYQT" ] && [ -n "$CMAKE_PREFIX_PATH" ]; then
-    [ -x "$CMAKE_PREFIX_PATH/bin/macdeployqt" ] && MACDEPLOYQT="$CMAKE_PREFIX_PATH/bin/macdeployqt"
+if [ -z "$MACDEPLOYQT" ]; then
+    # Ask the build which Qt it actually used rather than guessing: Qt6_DIR in
+    # the cache is <prefix>/lib/cmake/Qt6, so macdeployqt is three levels up in
+    # bin/. This also guarantees the deployment tool matches the Qt that built
+    # the bundle, which scanning the environment does not.
+    qt6_dir=$(sed -n 's/^Qt6_DIR:PATH=//p' "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | head -1)
+    if [ -n "$qt6_dir" ] && [ "$qt6_dir" != "Qt6_DIR-NOTFOUND" ]; then
+        candidate="$(dirname "$(dirname "$(dirname "$qt6_dir")")")/bin/macdeployqt"
+        [ -x "$candidate" ] && MACDEPLOYQT="$candidate"
+    fi
 fi
 if [ -z "$MACDEPLOYQT" ]; then
-    echo "macdeployqt not found - add Qt's bin directory to PATH"
+    echo "macdeployqt not found next to the Qt that CMake used, nor on PATH."
+    echo "Run packaging/setup to check the Qt installation."
     exit 1
 fi
 
@@ -132,6 +143,11 @@ fi
 if [ $? -ne 0 ]; then
     echo "macdeployqt failed"
     exit 1
+fi
+
+if [[ $format == "app" ]]; then
+    echo "Built dist/${APP_NAME}.app - run it with packaging/run_mac"
+    exit 0
 fi
 
 #===============================================

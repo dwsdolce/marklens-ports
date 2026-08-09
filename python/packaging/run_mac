@@ -1,0 +1,28 @@
+#!/bin/zsh
+#
+# Run the Python port, however it is available.
+#
+#   python/packaging/run_mac [document.md] [args...]
+#
+# See run_win for why the two candidates below are not two builds: this port
+# has no compile step, so it is the frozen bundle or the source in the venv.
+
+cd "$(dirname "$0")/.."
+
+# The executable inside the bundle rather than `open`, which detaches and would
+# lose the exit status and any stderr.
+if [ -x "dist/Marklens Python.app/Contents/MacOS/marklens-py" ]; then
+    exec "dist/Marklens Python.app/Contents/MacOS/marklens-py" "$@"
+fi
+
+for candidate in ".venv" "../.venv"; do
+    if [ -x "$candidate/bin/python" ]; then
+        exec "$candidate/bin/python" -m marklens "$@"
+    fi
+done
+
+echo "Nothing to run. Either set up the venv:"
+echo "    python3 -m venv .venv && .venv/bin/pip install -e \".[packaging]\""
+echo "or build the frozen bundle:"
+echo "    packaging/build_mac app"
+exit 1

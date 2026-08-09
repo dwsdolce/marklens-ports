@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# Run the Python port, however it is available.
+#
+#   python/packaging/run_linux [document.md] [args...]
+#
+# See run_win for why the two candidates below are not two builds: this port
+# has no compile step, so it is the frozen bundle or the source in the venv.
+
+cd "$(dirname "$0")/.."
+
+APPIMAGE=$(ls -t dist/Marklens-Python-*.AppImage 2>/dev/null | head -1)
+if [ -n "$APPIMAGE" ] && [ -x "$APPIMAGE" ]; then
+    exec "$APPIMAGE" "$@"
+fi
+
+if [ -x "dist/marklens-py/marklens-py" ]; then
+    exec ./dist/marklens-py/marklens-py "$@"
+fi
+
+for candidate in ".venv" "../.venv"; do
+    if [ -x "$candidate/bin/python" ]; then
+        exec "$candidate/bin/python" -m marklens "$@"
+    fi
+done
+
+echo "Nothing to run. Either set up the venv:"
+echo "    python3 -m venv .venv && .venv/bin/pip install -e \".[packaging]\""
+echo "or build the frozen bundle:"
+echo "    packaging/build_linux app"
+exit 1
