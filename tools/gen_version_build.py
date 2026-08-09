@@ -131,6 +131,15 @@ def main() -> None:
                         help="print the full version to stdout, nothing else")
     args = parser.parse_args()
 
+    # Windows text mode turns "\n" into "\r\n" on the way out.
+    # Bash's $(...) strips trailing newlines but not the carriage return, so
+    #     version=$(gen_version_build.py rust --print)
+    # captures "0.1.0.14\r" - and the Rust build script puts that straight
+    # into a file name, producing Marklens_Rust_V0.1.0.14<CR>.exe. The other two
+    # ports never noticed: Inno Setup names their installer from
+    # build/installer_version rather than from this output.
+    sys.stdout.reconfigure(newline="\n")
+
     ports = PORTS if args.port == "all" else (args.port,)
     for port in ports:
         full = stamp(port)

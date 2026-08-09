@@ -72,7 +72,11 @@ mkdir -p installer
 # Tauri requires to be valid semver; the fourth component is the build number
 # and appears in the installer file name, matching the other two ports.
 # --print also writes rust/build/installer_version, so this is one call.
-version=$("$PYTHON" ../tools/gen_version_build.py rust --print)
+# tr: belt and braces. This value becomes a file name, and a stray carriage
+# return from a Windows text-mode stdout would land inside it - $(...)
+# strips trailing newlines but not the CR that precedes them.
+version=$("$PYTHON" ../tools/gen_version_build.py rust --print | tr -d "
+")
 if [ $? -ne 0 ]; then
     echo "Generating the version failed"
     exit 1
