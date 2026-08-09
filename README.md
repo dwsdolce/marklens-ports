@@ -63,14 +63,17 @@ you can run all three at once and compare. See
 
 ## Known issues
 
-Open as of the packaging commit. Nothing here is a regression from it; the last
-three are behaviours the three ports were never made to agree on.
+Nothing here is a regression; the last three are behaviours the three ports
+were never made to agree on.
 
-- **macOS and Linux packaging is unexercised.** Every installer was built and
-  run on Windows. The `build_mac` and `build_linux` scripts for all three
-  ports, `macdeployqt`/`create-dmg`/`linuxdeploy`, the AppImage assembly and
-  the C++ port's `Info.plist.in` document types are written but have never been
-  run. Expect to shake bugs out of them.
+- **The packaging has only ever been run on Windows.** The three ports
+  themselves were developed and run on macOS — that is what the initial commit
+  is — but everything added since (`packaging/setup`, `build_mac`,
+  `build_linux`, `run_mac`, `run_linux`, and the `macdeployqt`, `create-dmg`,
+  `linuxdeploy` and AppImage paths they drive) was written and exercised on
+  Windows alone. The C++ port's md4c handling also differs off Windows: a
+  system md4c from Homebrew or apt should be found first, taking a branch
+  Windows never reaches. Linux has seen neither the apps nor the packaging.
 
 - **Same-document `#fragment` links probably misbehave on Windows.** Both Qt
   ports compare `url.toLocalFile()` (forward slashes) against the stored

@@ -98,8 +98,13 @@ macOS bundle identifier, so installing one never disturbs another.
 
 ## What has actually been run
 
-Everything below was exercised on Windows 11, with CMake 4.4, Visual Studio
-2026 (MSVC 14.51), Qt 6.11.1, Rust 1.97 and Inno Setup 6:
+These scripts were written on Windows and have only run there. The
+applications they package are a separate matter — all three ports were
+developed on macOS, and it is the packaging, not the ports, that is untried
+elsewhere.
+
+Exercised on Windows 11, with CMake 4.4, Visual Studio 2026 (MSVC 14.51),
+Qt 6.11.1, Rust 1.97 and Inno Setup 6:
 
 | Port   | Windows                                                    |
 |--------|------------------------------------------------------------|
@@ -107,10 +112,11 @@ Everything below was exercised on Windows 11, with CMake 4.4, Visual Studio
 | C++    | installer built, `ctest` 3/3, app launches from `dist/`    |
 | Rust   | installer built, fixtures 2/2                              |
 
-**macOS and Linux have never been run.** `build_mac` and `build_linux` for all
-three ports are written from the documented behaviour of `macdeployqt`,
-`create-dmg`, `linuxdeploy` and `appimagetool`, not from a working build. Treat
-the first run on either as a debugging session, not a release.
+**No packaging script has been run on macOS or Linux.** `setup`, `build_mac`,
+`build_linux`, `run_mac` and `run_linux` are written from the documented
+behaviour of `macdeployqt`, `create-dmg`, `linuxdeploy` and `appimagetool`, not
+from a working build. Treat the first run on either as a debugging session, not
+a release.
 
 ## Versions
 

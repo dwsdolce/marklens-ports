@@ -134,7 +134,7 @@ beside the executable for `assets::sharedDir()` to find. See
 [../packaging/README.md](../packaging/README.md) for the per-platform tools and
 for signing.
 
-Only the Windows path has actually been run; see the repository
+Only the Windows packaging path has actually been run; see the repository
 [README](../README.md) for what that means.
 
 ## Notes
