@@ -23,7 +23,9 @@ project_root = os.path.dirname(spec_dir)                 # python/
 repo_root = os.path.dirname(project_root)                # marklens-ports/
 shared = os.path.join(repo_root, "shared")
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import (
+    collect_data_files, collect_dynamic_libs, collect_submodules,
+)
 
 # ---------------------------------------------------------------- version ----
 # The base version lives in pyproject.toml; the build number is the git commit
@@ -67,9 +69,42 @@ else:
 # and a missed one fails at runtime rather than at build time. It costs bundle
 # size, which is the right trade for a viewer that is useless without a working
 # web engine.
-pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
+#
+# This is collect_all() split into its three parts so that PySide6.scripts can
+# be skipped. That package is the pyside6-deploy / pyside6-project CLI, which
+# nothing here imports, and its deploy_lib submodule imports its sibling
+# project_lib as though it were top-level - which only resolves when the console
+# script puts that directory on sys.path. Collecting it therefore fails every
+# build with a ModuleNotFoundError warning and contributes nothing.
+# PySide6.scripts is the pyside6-deploy / pyside6-project CLI, which nothing
+# here imports. Its deploy_lib submodule imports its sibling project_lib as
+# though it were top-level, which only resolves when the console script puts
+# that directory on sys.path, so collecting it fails every build with a
+# ModuleNotFoundError warning and contributes nothing.
+def _wanted_module(name):
+    return not name.startswith("PySide6.scripts")
+
+
+pyside_hidden = collect_submodules("PySide6", filter=_wanted_module)
+pyside_binaries = collect_dynamic_libs("PySide6")
+pyside_datas = collect_data_files("PySide6")
+
 datas += pyside_datas
 
+# Two warnings survive every build and are not worth chasing:
+#
+#   "Library not found: could not resolve 'LIBPQ.dll' ..." (and OCI, fbclient,
+#   MIMAPI64) - Qt's PostgreSQL, Oracle, Firebird and Mimer drivers, whose
+#   vendor client libraries are not installed. PyInstaller's PySide6 hook
+#   collects every plugin type the shipped Qt libraries reference, and the
+#   wheel ships all of Qt, so the drivers arrive no matter what the spec
+#   excludes - filtering them out of `binaries` here does not stop the hook
+#   putting them back. They are inert: nothing imports QtSql.
+#
+#   "QML plugin binary ...assetdownloader...dll does not exist!" - the wheel
+#   ships that plugin's .lib and .prl but not its .dll. An upstream packaging
+#   gap in a QML module nothing here uses.
+#
 icon_ico = os.path.join(shared, "icon-py.ico")    # tools/make_icons.py
 icon_icns = os.path.join(shared, "icon-py.icns")
 
