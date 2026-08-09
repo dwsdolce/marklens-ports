@@ -34,6 +34,20 @@ if(NOT DEFINED MARKLENS_FULL_VERSION)
     set(_marklens_build 0)
     find_package(Git QUIET)
     if(GIT_FOUND)
+        # Where .git actually is, and which branch, so the right files can be
+        # watched below. A worktree or submodule puts .git elsewhere.
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse --absolute-git-dir
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE _marklens_git_dir
+            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
+        )
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE _marklens_branch
+            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
+        )
         execute_process(
             COMMAND "${GIT_EXECUTABLE}" rev-list --count HEAD
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -47,6 +61,20 @@ if(NOT DEFINED MARKLENS_FULL_VERSION)
         endif()
     endif()
     set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.${_marklens_build}")
+
+    # The number above is fixed at configure time, and nothing would re-run
+    # configure after a commit - so the build kept reporting whatever count the
+    # last configure saw. Watching the right files fixes that for every build,
+    # not just the ones that happen to reconfigure.
+    #
+    # NOT .git/HEAD: that names the current branch and is untouched by
+    # committing. The reflog and the branch ref are what actually move.
+    foreach(_git_witness "logs/HEAD" "refs/heads/${_marklens_branch}")
+        if(EXISTS "${_marklens_git_dir}/${_git_witness}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                         "${_marklens_git_dir}/${_git_witness}")
+        endif()
+    endforeach()
 endif()
 message(STATUS "Marklens version ${MARKLENS_FULL_VERSION}")
 

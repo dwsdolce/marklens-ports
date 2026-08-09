@@ -39,9 +39,13 @@ fn main() {
 
     // Without these the number would be frozen at whatever the first build saw:
     // cargo only re-runs this script when something it was told to watch
-    // changes. HEAD covers committing, and the stamp file covers packaging.
+    // changes.
+    //
+    // NOT .git/HEAD, which was the first attempt and does nothing: that file
+    // names the current branch and is untouched by committing. The reflog moves
+    // on every commit, and the branch ref with it.
     println!("cargo:rerun-if-changed=../build/installer_version");
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/logs/HEAD");
 
     tauri_build::build()
 }
