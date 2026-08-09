@@ -109,7 +109,8 @@ Two levels, both done:
     This also FIXES the app-menu-name issue. Run:
     `open "build/Marklens C++.app" --args <file>`.
   - **Python**: PyInstaller. `python/packaging/marklens.spec` builds
-    `dist/Marklens Python.app`. Entry point is `python/run.py` (NOT
+    `dist/Marklens Python.app`. Entry point is
+    `python/packaging/pyinstaller_entry.py` (NOT
     `__main__.py` — running that directly breaks its relative imports).
     `assets._shared_dir()` is frozen-aware (`sys._MEIPASS`).
   - Both are now relocatable: `assets::sharedDir()` prefers a `shared/` next to

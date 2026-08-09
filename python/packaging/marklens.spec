@@ -144,7 +144,7 @@ if os.name == "nt":
 
 # ------------------------------------------------------------------ build ----
 a = Analysis(
-    [os.path.join(project_root, "run.py")],
+    [os.path.join(spec_dir, "pyinstaller_entry.py")],
     pathex=[os.path.join(project_root, "src")],
     binaries=pyside_binaries,
     datas=datas,

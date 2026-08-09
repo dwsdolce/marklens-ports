@@ -65,20 +65,25 @@ Every port takes the same two verbs, on every platform:
 which is the fast loop while working. The packaging verb — the default —
 carries on and produces the installer. `help` prints the modes.
 
-`run_*` runs whatever exists, preferring the most finished build, so "how do I
-run it" has one answer per platform rather than one per port. What it finds
-differs, because the three ports do not mean the same thing by "build":
+`run_*` is the development tool: it runs the **working tree**, building first
+where that means anything, and never touches `dist/`. One answer per platform
+to "how do I run this", rather than one per port:
 
-| Port | Preferred | Falls back to |
-|------|-----------|---------------|
-| Python | the frozen PyInstaller bundle | the source, from the venv — this port has no compile step at all |
-| C++ | `dist/`, which carries the Qt runtime | the `build/` tree, with Qt's DLLs put on `PATH` first |
-| Rust | `target/release/`, self-contained | `cargo run --release`, building if needed |
+| Port | What it does |
+|------|--------------|
+| Python | runs the source through the venv, as `python -m marklens` does — no build step exists |
+| C++ | configures and builds `build/` if needed, then runs it with Qt's DLLs on `PATH` |
+| Rust | `cargo run`, which rebuilds whatever changed |
 
-The C++ fallback matters on Windows: a plain `cmake --build` leaves an
+The C++ case earns its keep on Windows: a plain `cmake --build` leaves an
 executable that cannot find Qt's DLLs and exits silently, with no window and no
 error. `run_win` reads `Qt6_DIR` out of `CMakeCache.txt` and fixes `PATH`, so
 that failure mode never reaches you.
+
+Build numbers come from `git rev-list --count HEAD` in all three ports, asked at
+the point each one can: Python at runtime, C++ at configure time, Rust in
+`build.rs`. A packaged build falls back to the number stamped into
+`<port>/build/installer_version`, for a source tarball with no git to ask.
 
 ## What comes out
 

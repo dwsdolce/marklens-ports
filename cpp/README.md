@@ -38,49 +38,30 @@ Once `setup` reports **Ready**, nothing needs to be exported: `CMakeLists.txt`
 locates Qt and md4c itself, and `CMAKE_PREFIX_PATH`, `QTDIR` and `MD4C_ROOT`
 are overrides rather than requirements.
 
-## Build
-
-There are two ways to build, and which you want depends on what you are doing.
-
-### The whole thing, ready to run
-
-```bash
-packaging/build_win        # Git Bash or Cygwin
-packaging\build_win.bat    # cmd
-packaging/build_mac        # macOS
-packaging/build_linux      # Linux
-```
-
-This is the one to start with, especially on Windows. It configures, builds,
-stages the app with its assets into `dist/`, copies the Qt runtime in beside it,
-and produces an installer. Add `app` to stop after the deploy and skip the
-installer, which is the faster loop while working:
-
-```bash
-packaging/build_win app
-```
-
-Either way the result runs straight off the disk with nothing on `PATH`.
-
-### Just the compile, for iterating
-
-```bash
-cmake -B build
-cmake --build build --config Release
-```
-
-Faster, and what you want while changing code — but it only compiles. Nothing
-is deployed, so on Windows the executable cannot find Qt's DLLs and **exits
-silently, with no window and no error**. Put `<Qt>/6.11.1/msvc2022_64/bin` on
-`PATH` before running it:
-
-Rather than doing that by hand, use the run script, which finds whichever
-build exists and sorts out `PATH` from `CMakeCache.txt`:
+## Run
 
 ```bash
 packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
 packaging/run_mac ../shared/spec/sample/index.md
 packaging/run_linux ../shared/spec/sample/index.md
+```
+
+This is the tool for iterating on the code. It always runs the working tree,
+configuring and building `build/` first if it needs it, then running the
+result with Qt's DLLs on `PATH` — without which the executable exits
+silently, with no window and no error.
+Read the script if you want the details; there is nothing in it you could not
+type yourself, which is rather the point.
+
+It never runs anything under `dist/` — that is what **Package** is for.
+
+## Build
+
+`packaging/run_*` does this for you; these are the same two commands by hand.
+
+```bash
+cmake -B build
+cmake --build build --config Release
 ```
 
 Where the binary lands depends on the generator, which is easy to trip over:

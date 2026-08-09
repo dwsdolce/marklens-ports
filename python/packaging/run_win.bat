@@ -1,30 +1,27 @@
 @echo off
-REM Run the Python port, however it is available.
+REM Run the Python port from the current source.
 REM
 REM   python\packaging\run_win.bat [document.md] [args...]
 REM
-REM The cmd counterpart of packaging/run_win. This port has no compile step, so
-REM the two candidates are not two builds: the frozen PyInstaller bundle from
-REM `build_win.bat app`, or the source run from the venv.
+REM This is the tool for iterating on the code: it runs the working tree through
+REM the venv, exactly as `python -m marklens` does, and never the frozen bundle
+REM under dist\. Use packaging\build_win.bat when you want that instead.
+REM
+REM There is no build step here - that is the whole point of the port.
 
 cd /d "%~dp0\.."
 
-if exist "dist\marklens-py\marklens-py.exe" (
-    "dist\marklens-py\marklens-py.exe" %*
-    exit /b %errorlevel%
-)
-
 if exist ".venv\Scripts\python.exe" (
+    echo Running the source from .venv
     ".venv\Scripts\python.exe" -m marklens %*
     exit /b %errorlevel%
 )
 if exist "..\.venv\Scripts\python.exe" (
+    echo Running the source from ..\.venv
     "..\.venv\Scripts\python.exe" -m marklens %*
     exit /b %errorlevel%
 )
 
-echo Nothing to run. Either set up the venv:
-echo     python -m venv .venv ^&^& .venv\Scripts\pip install -e ".[packaging]"
-echo or build the frozen bundle:
-echo     packaging\build_win.bat app
+echo No virtual environment at python\.venv or ..\.venv
+echo Create one, then: pip install -e ".[dev]"
 exit /b 1

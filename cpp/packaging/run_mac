@@ -1,27 +1,30 @@
 #!/bin/zsh
 #
-# Run the C++ port, whichever way it was built.
+# Run the C++ port from the current source, building first if needed.
 #
 #   cpp/packaging/run_mac [document.md] [args...]
 #
-# The counterpart of run_win and run_linux: the same command shape on every
-# platform, so "how do I run it" has one answer rather than three.
+# This is the tool for iterating on the code: it always runs what is in the
+# working tree, never anything under dist/. Use packaging/build_mac when you
+# want the packaged artefact instead.
 
 cd "$(dirname "$0")/.."
 
-APP_NAME="Marklens C++"
+if [ ! -f build/CMakeCache.txt ]; then
+    echo "Configuring build/ ..."
+    cmake -B build || exit 1
+fi
 
-# `open` is not used here: it detaches, so the exit status and any stderr from
-# the app would be lost. Launching the executable inside the bundle keeps this
-# script's output attached to the terminal, which is the point of running it
-# this way rather than double-clicking.
-for bundle in "dist/${APP_NAME}.app" "build/${APP_NAME}.app"; do
-    if [ -x "$bundle/Contents/MacOS/${APP_NAME}" ]; then
-        exec "$bundle/Contents/MacOS/${APP_NAME}" "$@"
-    fi
-done
+echo "Building ..."
+cmake --build build || exit 1
 
-echo "No build found. Build one first:"
-echo "    packaging/build_mac app     # deployed into dist/, runs anywhere"
-echo "    cmake -B build && cmake --build build"
-exit 1
+# The executable inside the bundle rather than `open`, which detaches and would
+# lose the exit status and any stderr.
+APP="build/Marklens C++.app/Contents/MacOS/Marklens C++"
+if [ ! -x "$APP" ]; then
+    echo "Built, but no executable at $APP"
+    exit 1
+fi
+
+echo "Running $APP"
+exec "$APP" "$@"

@@ -1,37 +1,24 @@
 #!/bin/bash
 #
-# Run the Python port, however it is available.
+# Run the Python port from the current source.
 #
 #   python/packaging/run_win [document.md] [args...]
 #
-# The counterpart of run_mac and run_linux, and of the same script in the other
-# two ports: one command shape everywhere, so "how do I run it" has one answer.
+# This is the tool for iterating on the code: it runs the working tree through
+# the venv, exactly as `python -m marklens` does, and never the frozen bundle
+# under dist/. Use packaging/build_win when you want that instead.
 #
-# Unlike the C++ and Rust ports there is no compile step here, so the two things
-# this can find are not two builds:
-#
-#   dist/marklens-py/   the frozen PyInstaller bundle from `build_win app`,
-#                       carrying its own Python and Qt. What users get.
-#   the venv            the source, run directly. The normal way to work on it,
-#                       and what you want unless you are testing the bundle.
-#
-# The frozen bundle wins when it exists, because if you built one you probably
-# meant to try it.
+# There is no build step here - that is the whole point of the port.
 
 cd "$(dirname "$0")/.."
 
-if [ -x "dist/marklens-py/marklens-py.exe" ]; then
-    exec ./dist/marklens-py/marklens-py.exe "$@"
-fi
-
-for candidate in ".venv" "../.venv"; do
-    if [ -f "$candidate/Scripts/python.exe" ]; then
-        exec "$candidate/Scripts/python.exe" -m marklens "$@"
+for venv in ".venv" "../.venv"; do
+    if [ -x "$venv/Scripts/python.exe" ]; then
+        echo "Running the source from $venv"
+        exec "$venv/Scripts/python.exe" -m marklens "$@"
     fi
 done
 
-echo "Nothing to run. Either set up the venv:"
-echo "    python -m venv .venv && .venv/Scripts/pip install -e \".[packaging]\""
-echo "or build the frozen bundle:"
-echo "    packaging/build_win app"
+echo "No virtual environment at python/.venv or ../.venv"
+echo "Create one, then: pip install -e \".[dev]\""
 exit 1

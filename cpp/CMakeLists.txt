@@ -12,10 +12,43 @@ endif()
 # system this build compiles its sources directly (see below).
 project(marklens VERSION 0.1.0 LANGUAGES CXX C)
 
-# The four-part version for the Windows resource. The packaging scripts pass it
-# in from tools/gen_version_build.py; a plain developer build gets build 0.
-set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.0" CACHE STRING
-    "Four-part version stamped into the Windows executable resource")
+# The four-part version. The packaging scripts pass it in from
+# tools/gen_version_build.py; anything else asks git for the same number, so a
+# plain `cmake -B build` reports what the packaged build would rather than 0.
+#
+# Deliberately not a cache variable. Cached, the first configure would win and
+# the reported build number would stay behind every commit made since, which is
+# exactly the confusion this replaces. -D still overrides, because that defines
+# the variable before this runs.
+# A tree configured before this stopped being a cache variable still holds its
+# first answer, and a cache entry counts as defined - so without this the build
+# number would stay frozen at whatever that configure saw. The old entry is
+# recognisable by the help string it was created with; a -D on the command line
+# gets a different one and survives, as it should.
+get_property(_marklens_help CACHE MARKLENS_FULL_VERSION PROPERTY HELPSTRING)
+if(_marklens_help STREQUAL "Four-part version stamped into the Windows executable resource")
+    unset(MARKLENS_FULL_VERSION CACHE)
+endif()
+
+if(NOT DEFINED MARKLENS_FULL_VERSION)
+    set(_marklens_build 0)
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-list --count HEAD
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE _marklens_count
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE _marklens_git_rc
+        )
+        if(_marklens_git_rc EQUAL 0 AND _marklens_count)
+            set(_marklens_build "${_marklens_count}")
+        endif()
+    endif()
+    set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.${_marklens_build}")
+endif()
+message(STATUS "Marklens version ${MARKLENS_FULL_VERSION}")
 
 # The last component is the build number - the git commit count that
 # tools/gen_version_build.py stamps. Split back out so the About box can

@@ -1,29 +1,19 @@
 #!/bin/bash
 #
-# Run the Rust port, whichever way it was built.
+# Run the Rust port from the current source, building first if needed.
 #
 #   rust/packaging/run_linux [document.md] [args...]
 #
-# The counterpart of run_mac and run_win, and of the same script in the other
-# two ports: one command shape everywhere.
-#
-# The frontend is embedded in the binary and the webview comes from the OS, so
-# unlike the C++ port there is nothing to deploy alongside it - a release build
-# runs as-is. `cargo run` is the fallback, which also builds if needed.
+# This is the tool for iterating on the code: `cargo run` rebuilds whatever
+# changed and runs it. A debug build, because that is what iterating wants;
+# packaging/build_linux produces the optimised artefact.
 
 cd "$(dirname "$0")/.."
 
-for candidate in src-tauri/target/release/marklens-rust \
-                 src-tauri/target/debug/marklens-rust; do
-    if [ -x "$candidate" ]; then
-        exec "./$candidate" "$@"
-    fi
-done
-
-if command -v cargo >/dev/null 2>&1; then
-    echo "No build found - building and running with cargo."
-    cd src-tauri && exec cargo run --release -- "$@"
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo is not on PATH. Run packaging/setup first."
+    exit 1
 fi
 
-echo "No build found and cargo is not on PATH. Run packaging/setup first."
-exit 1
+cd src-tauri
+exec cargo run -- "$@"

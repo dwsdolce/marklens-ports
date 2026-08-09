@@ -14,10 +14,18 @@ python3 -m venv .venv
 ## Run
 
 ```bash
-.venv/bin/python -m marklens ../shared/spec/sample/index.md
-# or via the installed console script:
-.venv/bin/marklens ../shared/spec/sample/index.md
+packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
+packaging/run_mac ../shared/spec/sample/index.md
+packaging/run_linux ../shared/spec/sample/index.md
 ```
+
+This is the tool for iterating on the code. It always runs the working tree,
+through the venv, exactly as `python -m marklens` does. There is no
+build step — that is the whole point of this port.
+Read the script if you want the details; there is nothing in it you could not
+type yourself, which is rather the point.
+
+It never runs anything under `dist/` — that is what **Package** is for.
 
 ## Check
 
@@ -32,19 +40,6 @@ PYTHONPATH=tests .venv/bin/python -m pytest -q      # whole suite
 checks (`test_gui.py`), which launch `smoke_gui.py` (render — image, mermaid,
 table, highlight) and `nav_smoke.py` (clicks a link in the real MainWindow and
 verifies it navigates without trapping) as offscreen subprocesses.
-
-## Run
-
-```bash
-packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
-packaging/run_mac ../shared/spec/sample/index.md
-packaging/run_linux ../shared/spec/sample/index.md
-```
-
-Same command shape as the other two ports. This one has no compile step, so it
-prefers a frozen PyInstaller bundle if you have built one and otherwise runs
-the source from the venv — which is what you want while working, and identical
-to the `python -m marklens` above.
 
 ## Package
 

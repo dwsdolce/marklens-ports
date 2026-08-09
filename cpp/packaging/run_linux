@@ -1,28 +1,22 @@
 #!/bin/bash
 #
-# Run the C++ port, whichever way it was built.
+# Run the C++ port from the current source, building first if needed.
 #
 #   cpp/packaging/run_linux [document.md] [args...]
 #
-# The counterpart of run_win and run_mac: the same command shape on every
-# platform, so "how do I run it" has one answer rather than three.
+# This is the tool for iterating on the code: it always runs what is in the
+# working tree, never anything under dist/. Use packaging/build_linux when you
+# want the packaged artefact instead.
 
 cd "$(dirname "$0")/.."
 
-# The AppImage, if one was built - self-contained, so it wins.
-APPIMAGE=$(ls -t dist/Marklens-Cpp-*.AppImage 2>/dev/null | head -1)
-if [ -n "$APPIMAGE" ] && [ -x "$APPIMAGE" ]; then
-    exec "$APPIMAGE" "$@"
+if [ ! -f build/CMakeCache.txt ]; then
+    echo "Configuring build/ ..."
+    cmake -B build || exit 1
 fi
 
-# Then the staged tree from `build_linux app`, then the development build.
-for candidate in dist/marklens-cpp build/marklens-cpp; do
-    if [ -x "$candidate" ]; then
-        exec "./$candidate" "$@"
-    fi
-done
+echo "Building ..."
+cmake --build build || exit 1
 
-echo "No build found. Build one first:"
-echo "    packaging/build_linux app   # staged into dist/"
-echo "    cmake -B build && cmake --build build"
-exit 1
+echo "Running build/marklens-cpp"
+exec ./build/marklens-cpp "$@"

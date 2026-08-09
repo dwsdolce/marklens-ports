@@ -31,11 +31,18 @@ installer carries the WebView2 bootstrapper for machines without it.
 ## Run
 
 ```bash
-cd src-tauri
-cargo run -- ../../shared/spec/sample/index.md   # simplest: static frontend is embedded
-# or the full dev experience:
-cargo tauri dev
+packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
+packaging/run_mac ../shared/spec/sample/index.md
+packaging/run_linux ../shared/spec/sample/index.md
 ```
+
+This is the tool for iterating on the code. It always runs the working tree,
+rebuilding whatever changed via `cargo run`. A debug build, because that
+is what iterating wants; **Package** produces the optimised artefact.
+Read the script if you want the details; there is nothing in it you could not
+type yourself, which is rather the point.
+
+It never runs anything under `dist/` — that is what **Package** is for.
 
 ## Test
 
@@ -47,17 +54,6 @@ cargo test            # core: comrak renderer + link resolver vs shared fixtures
 `tests/fixtures.rs` loads `../../shared/spec/fixtures/*.json` — the same
 contract the Python and C++ ports satisfy. comrak matched it with no per-engine
 fixups (strikethrough is `<del>` natively).
-
-## Run
-
-```bash
-packaging/run_win ../shared/spec/sample/index.md      # run_win.bat in cmd
-packaging/run_mac ../shared/spec/sample/index.md
-packaging/run_linux ../shared/spec/sample/index.md
-```
-
-Same command shape as the other two ports. It prefers a release build and falls
-back to `cargo run --release`, building if there is nothing there yet.
 
 ## Package
 
