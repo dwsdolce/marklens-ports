@@ -96,12 +96,31 @@ def base_version(port: str) -> str:
 
 
 def stamp(port: str) -> str:
-    """Write ``<port>/build/installer_version`` and return the full version."""
-    full = f"{base_version(port)}.{commit_count()}"
+    """Write a port's version files and return the full version.
+
+    Two files, because two consumers want different things:
+
+    ``<port>/build/installer_version``
+        The full four-part version, which is what Windows and the Inno Setup
+        scripts want.
+    ``python/src/marklens/version_build``
+        Just the build number, for ``marklens.__version__``. The Python port
+        has no build step to bake a constant into, so it reads this at runtime.
+        The C++ port gets a compile definition and the Rust one an env var from
+        build.rs, so neither needs a file.
+    """
+    build = commit_count()
+    full = f"{base_version(port)}.{build}"
+
     target = ROOT / port / "build" / "installer_version"
     target.parent.mkdir(parents=True, exist_ok=True)
     # No trailing newline: the .iss scripts read this raw.
     target.write_text(full, encoding="utf-8")
+
+    if port == "python":
+        (ROOT / "python" / "src" / "marklens" / "version_build").write_text(
+            build, encoding="utf-8")
+
     return full
 
 

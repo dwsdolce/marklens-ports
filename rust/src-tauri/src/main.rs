@@ -6,7 +6,9 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadataBuilder, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder,
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -154,8 +156,24 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
     let recent = load_recent(app);
     let auto = *app.state::<AppState>().auto_reload.lock().unwrap();
 
+    // MARKLENS_VERSION comes from build.rs; see there for why it is not the
+    // version in tauri.conf.json.
+    let about = AboutMetadataBuilder::new()
+        .name(Some("Marklens"))
+        .version(Some(env!("MARKLENS_VERSION")))
+        .comments(Some(
+            "A native Markdown viewer, Rust/Tauri port. One of three ports of the \
+             same viewer - Python/PySide6, C++/Qt and Rust/Tauri - kept \
+             behaviourally identical by a shared specification.",
+        ))
+        .website(Some("https://github.com/dwsdolce/marklens-ports"))
+        .website_label(Some("Project on GitHub"))
+        .license(Some("MIT"))
+        .credits(Some("A reimplementation of Marklens by Donald Jackson, https://github.com/donald-jackson/marklens"))
+        .build();
+
     let app_menu = SubmenuBuilder::new(app, "Marklens")
-        .about(None)
+        .about(Some(about))
         .separator()
         .quit()
         .build()?;

@@ -2,6 +2,7 @@
 name = "marklens"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 # Core logic in the library so `cargo test` exercises it against the shared
 # fixtures; the Tauri binary depends on it.

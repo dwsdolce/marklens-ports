@@ -176,8 +176,26 @@ void MainWindow::showHelp() {
 }
 
 void MainWindow::showAbout() {
-    QMessageBox::about(this, "About Marklens",
-                       "<b>Marklens</b> (C++/Qt port)<br>A native Markdown viewer.");
+    // "0.1.0 (4)" - base version, then the build number, which is the git
+    // commit count baked in at configure time. See CMakeLists.txt.
+    const QString version = QStringLiteral(MARKLENS_BUILD).isEmpty()
+                                ? QStringLiteral(MARKLENS_VERSION)
+                                : QStringLiteral(MARKLENS_VERSION " (" MARKLENS_BUILD ")");
+    QMessageBox::about(
+        this, "About Marklens",
+        QStringLiteral("<h3>Marklens</h3>"
+                       "<p>A native Markdown viewer, C++/Qt port.</p>"
+                       "<p>Version %1<br>Qt %2</p>"
+                       "<p><a href='%3'>%3</a></p>"
+                       "<p>One of three ports of the same viewer -- Python/PySide6, "
+                       "C++/Qt and Rust/Tauri -- kept behaviourally identical by a "
+                       "shared specification.</p>"
+                       "<p>A reimplementation of <a href='%4'>Marklens</a> by "
+                       "Donald Jackson.</p>"
+                       "<p>Licensed under the MIT License.</p>")
+            .arg(version, QStringLiteral(QT_VERSION_STR),
+                 QStringLiteral("https://github.com/dwsdolce/marklens-ports"),
+                 QStringLiteral("https://github.com/donald-jackson/marklens")));
 }
 
 void MainWindow::openPath(const QString &path, bool recordHistory) {

@@ -109,7 +109,11 @@ add_library(marklens_core STATIC
 )
 target_include_directories(marklens_core PUBLIC src)
 target_link_libraries(marklens_core PUBLIC Qt6::Core marklens_md4c)
-target_compile_definitions(marklens_core PUBLIC MARKLENS_SHARED_DIR="${SHARED_DIR}")
+target_compile_definitions(marklens_core PUBLIC
+    MARKLENS_SHARED_DIR="${SHARED_DIR}"
+    MARKLENS_VERSION="${MARKLENS_BASE_VERSION}"
+    MARKLENS_BUILD="${MARKLENS_BUILD}"
+)
 
 # --- GUI: window + page, shared by the app and the nav test ----------------
 add_library(marklens_gui STATIC src/mainwindow.cpp src/page.cpp)
@@ -130,6 +134,12 @@ endif()
 # in from tools/gen_version_build.py; a plain developer build gets build 0.
 set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.0" CACHE STRING
     "Four-part version stamped into the Windows executable resource")
+
+# The last component is the build number - the git commit count that
+# tools/gen_version_build.py stamps. Split back out so the About box can
+# render "0.1.0 (4)", the same way the other two ports do.
+string(REGEX REPLACE "\\.[^.]*$" "" MARKLENS_BASE_VERSION "${MARKLENS_FULL_VERSION}")
+string(REGEX REPLACE "^.*\\." "" MARKLENS_BUILD "${MARKLENS_FULL_VERSION}")
 
 # On macOS, build a .app bundle so it carries an icon and a proper app-menu
 # name. The .icns is copied into the bundle's Resources.

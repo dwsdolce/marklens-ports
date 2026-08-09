@@ -4,9 +4,10 @@ The Marklens Markdown viewer, reimplemented three ways for fun and comparison:
 **Python/PySide6**, **C++/Qt**, and **Rust/Tauri**. A Rosetta Stone — one
 behavior, three stacks.
 
-The original is a native macOS/iOS app (SwiftUI + WebKit). These target
-Windows and Linux (and macOS) as ordinary desktop apps, so everything the
-original did to satisfy the App Sandbox is gone — see `shared/spec/SPEC.md`.
+The original is [Marklens](https://github.com/donald-jackson/marklens) by Donald
+Jackson, a native macOS/iOS app (SwiftUI + WebKit). These target Windows and
+Linux (and macOS) as ordinary desktop apps, so everything the original did to
+satisfy the App Sandbox is gone — see `shared/spec/SPEC.md`.
 
 ## Layout
 
@@ -94,3 +95,36 @@ three are behaviours the three ports were never made to agree on.
   explicit `system-ui`/12px fallback, so an unsupporting webview degrades
   rather than regressing to the 16px document font, but nobody has looked at
   the final build.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+These are ground-up reimplementations rather than a translation: the original is
+Swift and no code was carried across. What did come from it is the **application
+icon**, which is MIT and remains © Donald Jackson; `LICENSE` reproduces that
+notice, as MIT requires.
+
+### Third-party components
+
+Everything below is permissive and compatible with distributing this under MIT.
+Qt is the only one carrying an obligation worth knowing about.
+
+| Component | Used by | License |
+|-----------|---------|---------|
+| [Qt 6](https://www.qt.io) / PySide6 | Python, C++ | **LGPL-3.0** |
+| [md4c](https://github.com/mity/md4c) | C++ | MIT |
+| [markdown-it-py](https://github.com/executablebooks/markdown-it-py), mdit-py-plugins | Python | MIT |
+| [platformdirs](https://github.com/tox-dev/platformdirs) | Python | MIT |
+| [Tauri](https://tauri.app) | Rust | Apache-2.0 OR MIT |
+| [comrak](https://github.com/kivikakk/comrak) | Rust | BSD-2-Clause |
+| [serde](https://serde.rs), regex, url, percent-encoding, dirs | Rust | MIT OR Apache-2.0 |
+| [notify](https://github.com/notify-rs/notify) | Rust | CC0-1.0 |
+| [highlight.js](https://highlightjs.org) | all three | BSD-3-Clause |
+| [Mermaid](https://mermaid.js.org) | all three | MIT |
+
+**Qt is LGPL-3.0, not GPL**, which is why these ports need not adopt its
+license: LGPL requires only that a user be able to relink the application
+against a modified Qt. The packaged builds ship Qt as separate shared libraries
+rather than statically linked, which satisfies that. Qt's source is available
+from <https://www.qt.io/download>.

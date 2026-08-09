@@ -53,6 +53,15 @@ for name in ("help.html", "help_default_macos.html", "help_default_windows.html"
              "help_default_linux.html"):
     datas.append((os.path.join(shared, name), "shared"))
 
+# The build number, read back by marklens.__build__ for the About box. A frozen
+# app has no git to ask, which is the whole reason this file exists.
+version_stamp = os.path.join(project_root, "src", "marklens", "version_build")
+if os.path.isfile(version_stamp):
+    datas.append((version_stamp, "marklens"))
+else:
+    print("WARNING: src/marklens/version_build is missing - run "
+          "tools/gen_version_build.py python; About will show no build number")
+
 # PySide6 is collected wholesale rather than left to the automatic hooks:
 # QtWebEngine drags in a Chromium process, its .pak resources and its ICU data,
 # and a missed one fails at runtime rather than at build time. It costs bundle

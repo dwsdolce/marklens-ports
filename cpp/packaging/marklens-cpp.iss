@@ -66,6 +66,14 @@ SetupIconFile=..\..\shared\icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Without these the generated Setup.exe carries no FileVersion at all,
+; so one installer cannot be told from another in Explorer.
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductName={#MyAppName}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoCopyright=Copyright (C) 2026 Marklens contributors.
 WizardStyle=modern
 ; Uses the Restart Manager to ask a running copy to close rather than requiring
 ; a reboot to replace files that are in use.

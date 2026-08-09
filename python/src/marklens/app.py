@@ -291,10 +291,24 @@ class MainWindow(QMainWindow):
         self._help_dialog.show()
 
     def _show_about(self) -> None:
+        from PySide6 import __version__ as pyside_version
         from PySide6.QtWidgets import QMessageBox
 
+        from . import PROJECT_URL, UPSTREAM_URL, __version_string__
+
         QMessageBox.about(
-            self, "About Marklens", "<b>Marklens</b> (PySide6 port)<br>A native Markdown viewer."
+            self,
+            "About Marklens",
+            "<h3>Marklens</h3>"
+            "<p>A native Markdown viewer, Python/PySide6 port.</p>"
+            f"<p>Version {__version_string__}<br>PySide6 {pyside_version}</p>"
+            f"<p><a href='{PROJECT_URL}'>{PROJECT_URL}</a></p>"
+            "<p>One of three ports of the same viewer &mdash; Python/PySide6, "
+            "C++/Qt and Rust/Tauri &mdash; kept behaviourally identical by a "
+            "shared specification.</p>"
+            f"<p>A reimplementation of <a href='{UPSTREAM_URL}'>Marklens</a> "
+            "by Donald Jackson.</p>"
+            "<p>Licensed under the MIT License.</p>",
         )
 
     # ── loading ──────────────────────────────────────────────────────────────

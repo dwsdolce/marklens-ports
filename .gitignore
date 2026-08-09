@@ -40,6 +40,9 @@ rust/dist/
 # `cargo test` fails without it, and it sits beside the icon.png and icon.icns
 # that Tauri already expects to be committed there.
 shared/icon.ico
+# Stamped by tools/gen_version_build.py so a frozen app can report its
+# build number without git.
+python/src/marklens/version_build
 
 # packaging/setup builds md4c here (see cpp/packaging/setup)
 cpp/third_party/
