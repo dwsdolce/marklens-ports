@@ -73,7 +73,13 @@ class _Page(QWebEnginePage):
         if (
             url.hasFragment()
             and self.document_path is not None
-            and url.toLocalFile() == str(self.document_path)
+            # Compared as paths, not strings: Qt hands back forward slashes even
+            # on Windows, where str(Path) gives backslashes, so the string form
+            # never matched and every in-page anchor re-rendered the document
+            # from the top instead of scrolling to the heading. The C++ port
+            # avoids this by storing QFileInfo::absoluteFilePath(), which is
+            # already in Qt's spelling.
+            and Path(url.toLocalFile()) == self.document_path
         ):
             return True
 

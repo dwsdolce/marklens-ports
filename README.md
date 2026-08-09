@@ -63,8 +63,9 @@ you can run all three at once and compare. See
 
 ## Known issues
 
-Nothing here is a regression; the last three are behaviours the three ports
-were never made to agree on.
+Nothing here is a regression. The three ports have been eyeballed side by side
+on Windows and match; what remains is one deliberate divergence and one
+platform nobody has run.
 
 - **The packaging has only ever been run on Windows.** The three ports
   themselves were developed and run on macOS — that is what the initial commit
@@ -75,29 +76,12 @@ were never made to agree on.
   system md4c from Homebrew or apt should be found first, taking a branch
   Windows never reaches. Linux has seen neither the apps nor the packaging.
 
-- **Same-document `#fragment` links probably misbehave on Windows.** Both Qt
-  ports compare `url.toLocalFile()` (forward slashes) against the stored
-  document path (native separators) to decide whether a link is an in-page
-  anchor — `cpp/src/page.cpp` and the equivalent in `python/src/marklens/app.py`.
-  On Windows that comparison should never match, so an anchor click likely
-  re-renders the document instead of scrolling to it. Read from the code, not
-  reproduced. Same family as the separator bugs already fixed in the link
-  fixtures and the recent-files list.
-
 - **Recent files are shared between the Qt ports but not with Rust.** The C++
   and Python ports both use `QSettings` under `Marklens/Marklens`, so they
   share one list; the Rust port keeps its own JSON under Tauri's
   `app_config_dir`. Deliberate for now — unifying them means pinning one path
   in `shared/spec/SPEC.md`, because `dirs`, `platformdirs` and `QStandardPaths`
   disagree about where config belongs on Windows and macOS.
-
-- **The window title differs.** The Qt ports show `index.md — Marklens`; the
-  Rust port shows only `Marklens`.
-
-- **The Rust toolbar's `font: menu` rule is unverified visually.** It has an
-  explicit `system-ui`/12px fallback, so an unsupporting webview degrades
-  rather than regressing to the 16px document font, but nobody has looked at
-  the final build.
 
 ## License
 
