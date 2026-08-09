@@ -12,6 +12,17 @@ endif()
 # system this build compiles its sources directly (see below).
 project(marklens VERSION 0.1.0 LANGUAGES CXX C)
 
+# The four-part version for the Windows resource. The packaging scripts pass it
+# in from tools/gen_version_build.py; a plain developer build gets build 0.
+set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.0" CACHE STRING
+    "Four-part version stamped into the Windows executable resource")
+
+# The last component is the build number - the git commit count that
+# tools/gen_version_build.py stamps. Split back out so the About box can
+# render "0.1.0 (4)", the same way the other two ports do.
+string(REGEX REPLACE "\\.[^.]*$" "" MARKLENS_BASE_VERSION "${MARKLENS_FULL_VERSION}")
+string(REGEX REPLACE "^.*\\." "" MARKLENS_BUILD "${MARKLENS_FULL_VERSION}")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -129,17 +140,6 @@ if(APPLE)
 else()
     set(MARKLENS_APP_NAME "marklens-cpp")
 endif()
-
-# The four-part version for the Windows resource. The packaging scripts pass it
-# in from tools/gen_version_build.py; a plain developer build gets build 0.
-set(MARKLENS_FULL_VERSION "${PROJECT_VERSION}.0" CACHE STRING
-    "Four-part version stamped into the Windows executable resource")
-
-# The last component is the build number - the git commit count that
-# tools/gen_version_build.py stamps. Split back out so the About box can
-# render "0.1.0 (4)", the same way the other two ports do.
-string(REGEX REPLACE "\\.[^.]*$" "" MARKLENS_BASE_VERSION "${MARKLENS_FULL_VERSION}")
-string(REGEX REPLACE "^.*\\." "" MARKLENS_BUILD "${MARKLENS_FULL_VERSION}")
 
 # On macOS, build a .app bundle so it carries an icon and a proper app-menu
 # name. The .icns is copied into the bundle's Resources.
