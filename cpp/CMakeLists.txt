@@ -81,6 +81,19 @@ set(MD4C_HINT_DIRS
 list(TRANSFORM MD4C_HINT_DIRS APPEND "/include" OUTPUT_VARIABLE MD4C_INCLUDE_HINTS)
 list(TRANSFORM MD4C_HINT_DIRS APPEND "/lib" OUTPUT_VARIABLE MD4C_LIB_HINTS)
 
+# find_path and find_library cache their results, and never re-search once a
+# cache entry is set. A tree configured before md4c moved therefore keeps
+# pointing at the prefix the old packaging/setup installed into, and fails at
+# link time with LNK1181 on a .lib that is no longer there. Drop any cached
+# answer that no longer exists so the search below runs again, rather than
+# making everyone delete their build directory.
+foreach(_md4c_var MD4C_INCLUDE_DIR MD4C_LIB MD4C_HTML_LIB)
+    if(${_md4c_var} AND NOT EXISTS "${${_md4c_var}}")
+        message(STATUS "Discarding stale ${_md4c_var}: ${${_md4c_var}}")
+        unset(${_md4c_var} CACHE)
+    endif()
+endforeach()
+
 find_path(MD4C_INCLUDE_DIR md4c-html.h HINTS ${MD4C_INCLUDE_HINTS})
 find_library(MD4C_LIB md4c HINTS ${MD4C_LIB_HINTS})
 find_library(MD4C_HTML_LIB md4c-html HINTS ${MD4C_LIB_HINTS})
