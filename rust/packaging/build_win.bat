@@ -46,16 +46,6 @@ if exist installer rmdir /s /q installer
 mkdir installer
 
 REM ===============================================
-REM Generate the Windows icon from the shared PNG
-REM ===============================================
-REM Tauri picks the .ico out of bundle.icon for the exe and the installer.
-"%PYTHON%" ..\tools\make_ico.py ..\shared\icon.png src-tauri\icons\icon.ico
-if errorlevel 1 (
-    echo Generating the icon failed
-    exit /b 1
-)
-
-REM ===============================================
 REM Generate the version from the git commit count
 REM ===============================================
 REM The bundle itself carries the three-part version from tauri.conf.json,

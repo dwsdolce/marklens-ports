@@ -79,16 +79,6 @@ rm -rf dist
 rm -rf build
 
 #===============================================
-# Generate the Windows icon from the shared PNG
-#===============================================
-# Used for the exe resource, the wizard and the uninstall entry.
-"$PYTHON" ../tools/make_ico.py
-if [ $? -ne 0 ]; then
-    echo "Generating the icon failed"
-    exit 1
-fi
-
-#===============================================
 # Generate the version from the git commit count
 #===============================================
 # Writes python/build/installer_version, which both the spec file and the Inno

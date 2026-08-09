@@ -48,15 +48,6 @@ if exist dist rmdir /s /q dist
 if exist build rmdir /s /q build
 
 REM ===============================================
-REM Generate the Windows icon from the shared PNG
-REM ===============================================
-python ..\tools\make_ico.py
-if errorlevel 1 (
-    echo Generating the icon failed
-    exit /b 1
-)
-
-REM ===============================================
 REM Generate the version from the git commit count
 REM ===============================================
 REM Writes python\build\installer_version, which both the spec file and the

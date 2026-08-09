@@ -48,15 +48,6 @@ if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
 if exist "%STAGE_DIR%" rmdir /s /q "%STAGE_DIR%"
 
 REM ===============================================
-REM Generate the Windows icon from the shared PNG
-REM ===============================================
-"%PYTHON%" ..\tools\make_ico.py
-if errorlevel 1 (
-    echo Generating the icon failed
-    exit /b 1
-)
-
-REM ===============================================
 REM Generate the version from the git commit count
 REM ===============================================
 REM Writes cpp\build\installer_version, which the Inno Setup script reads.

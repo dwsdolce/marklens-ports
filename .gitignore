@@ -34,12 +34,11 @@ cpp/dist/
 rust/build/
 rust/dist/
 
-# Generated from shared/icon.png by tools/make_ico.py, so there is no second
-# copy of the artwork to keep in step. The Rust port's copy is NOT ignored:
-# tauri-build reads bundle.icon at compile time, so a plain `cargo build` or
-# `cargo test` fails without it, and it sits beside the icon.png and icon.icns
-# that Tauri already expects to be committed there.
-shared/icon.ico
+# The per-port icons (shared/icon-{cpp,py,rust}.{png,ico,icns}) are committed
+# artwork, not build output: tauri-build reads its .ico at compile time, and
+# committing them means building a port needs neither Inkscape nor PySide6.
+# tools/make_icons.py regenerates them when shared/icon.svg changes.
+build/icon-plate-*.png
 # Stamped by tools/gen_version_build.py so a frozen app can report its
 # build number without git.
 python/src/marklens/version_build

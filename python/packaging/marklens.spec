@@ -47,7 +47,7 @@ print(f"Creating build for version {package_version}")
 datas = [
     (os.path.join(shared, "web"), os.path.join("shared", "web")),
     (os.path.join(shared, "icons"), os.path.join("shared", "icons")),
-    (os.path.join(shared, "icon.png"), "shared"),
+    (os.path.join(shared, "icon-py.png"), "shared"),
 ]
 for name in ("help.html", "help_default_macos.html", "help_default_windows.html",
              "help_default_linux.html"):
@@ -70,8 +70,8 @@ else:
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 datas += pyside_datas
 
-icon_ico = os.path.join(shared, "icon.ico")     # tools/make_ico.py
-icon_icns = os.path.join(shared, "icon.icns")
+icon_ico = os.path.join(shared, "icon-py.ico")    # tools/make_icons.py
+icon_icns = os.path.join(shared, "icon-py.icns")
 
 # ------------------------------------------------------------ version info ---
 # Windows only: puts the version on the exe's Properties tab, and gives Inno
@@ -129,7 +129,7 @@ if sys.platform == "darwin":
 else:
     icon = icon_ico if os.path.isfile(icon_ico) else None
     if icon is None:
-        print("WARNING: shared/icon.ico is missing - run tools/make_ico.py")
+        print("WARNING: shared/icon-py.ico is missing - run tools/make_icons.py")
 
 exe = EXE(
     pyz,

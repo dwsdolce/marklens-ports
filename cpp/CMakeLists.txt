@@ -143,7 +143,7 @@ endif()
 
 # On macOS, build a .app bundle so it carries an icon and a proper app-menu
 # name. The .icns is copied into the bundle's Resources.
-set(APP_ICON "${SHARED_DIR}/icon.icns")
+set(APP_ICON "${SHARED_DIR}/icon-cpp.icns")
 set_source_files_properties("${APP_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
 qt_add_executable(marklens MACOSX_BUNDLE src/main.cpp "${APP_ICON}")
@@ -158,7 +158,7 @@ set_target_properties(marklens PROPERTIES
     WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE_BUNDLE_NAME "${MARKLENS_APP_NAME}"
     MACOSX_BUNDLE_GUI_IDENTIFIER "solutions.ddj.marklens.cpp"
-    MACOSX_BUNDLE_ICON_FILE "icon.icns"
+    MACOSX_BUNDLE_ICON_FILE "icon-cpp.icns"
     MACOSX_BUNDLE_BUNDLE_VERSION "${MARKLENS_FULL_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${MARKLENS_FULL_VERSION}"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist.in"
@@ -168,13 +168,13 @@ set_target_properties(marklens PROPERTIES
 # Properties tab all show something sensible. The .ico is generated from the
 # shared PNG by tools/make_ico.py rather than committed a third time.
 if(WIN32)
-    set(MARKLENS_ICO "${SHARED_DIR}/icon.ico")
+    set(MARKLENS_ICO "${SHARED_DIR}/icon-cpp.ico")
     if(EXISTS "${MARKLENS_ICO}")
         string(REPLACE "." "," MARKLENS_VERSION_COMMAS "${MARKLENS_FULL_VERSION}")
         configure_file(packaging/marklens.rc.in "${CMAKE_CURRENT_BINARY_DIR}/marklens.rc" @ONLY)
         target_sources(marklens PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/marklens.rc")
     else()
-        message(WARNING "shared/icon.ico is missing (run tools/make_ico.py) - "
+        message(WARNING "shared/icon-cpp.ico is missing (run tools/make_icons.py) - "
                         "the executable will have no icon")
     endif()
 endif()
@@ -202,7 +202,7 @@ install(TARGETS marklens
 install(DIRECTORY "${SHARED_DIR}/web"   DESTINATION "${MARKLENS_ASSET_DEST}")
 install(DIRECTORY "${SHARED_DIR}/icons" DESTINATION "${MARKLENS_ASSET_DEST}")
 install(FILES
-    "${SHARED_DIR}/icon.png"
+    "${SHARED_DIR}/icon-cpp.png"
     "${SHARED_DIR}/help.html"
     "${SHARED_DIR}/help_default_macos.html"
     "${SHARED_DIR}/help_default_windows.html"

@@ -29,8 +29,12 @@ def asset_base_url() -> str:
 
 
 def icon_path() -> Path:
-    """The app icon (shared with the other ports for now)."""
-    return _shared_dir() / "icon.png"
+    """The app icon, badged for this port.
+
+    The three ports install side by side, so each carries the shared Marklens
+    plate with its own language badge. tools/make_icons.py generates them.
+    """
+    return _shared_dir() / "icon-py.png"
 
 
 def icons_dir() -> Path:

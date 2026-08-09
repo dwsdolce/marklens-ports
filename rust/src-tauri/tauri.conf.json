@@ -28,9 +28,9 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "../../shared/icon-rust.png",
+      "../../shared/icon-rust.icns",
+      "../../shared/icon-rust.ico"
     ],
     "publisher": "Dolce Sfogato",
     "copyright": "Copyright (C) 2026 Marklens contributors.",

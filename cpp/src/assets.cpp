@@ -69,7 +69,9 @@ QString assetBaseUrl() {
 }
 
 QString iconPath() {
-    return sharedDir() + QStringLiteral("/icon.png");
+    // Badged per port, so the three can be told apart in a taskbar when they
+    // are installed side by side. tools/make_icons.py generates them.
+    return sharedDir() + QStringLiteral("/icon-cpp.png");
 }
 
 QString helpHtml() {

@@ -81,16 +81,6 @@ rm -rf "$BUILD_DIR"
 rm -rf "$STAGE_DIR"
 
 #===============================================
-# Generate the Windows icon from the shared PNG
-#===============================================
-# Compiled into the executable by the resource script; also used by the wizard.
-"$PYTHON" ../tools/make_ico.py
-if [ $? -ne 0 ]; then
-    echo "Generating the icon failed"
-    exit 1
-fi
-
-#===============================================
 # Generate the version from the git commit count
 #===============================================
 # Writes cpp/build/installer_version, which the Inno Setup script reads. --print
