@@ -44,6 +44,24 @@ Sandbox is deleted here, because Windows/Linux desktop apps aren't sandboxed:
 - **Find** in page, **zoom** in/out/reset, **export to PDF**, **reveal in the
   system file manager**.
 
+## Empty state
+
+Launched with no document, every port shows the shared page shell containing:
+
+```html
+<p style='opacity:.6;padding:1rem'>Open a Markdown file to view it.</p>
+```
+
+and titles its window `Marklens` with no filename prefix.
+
+This has no counterpart in the original, which was document-based: a SwiftUI
+`DocumentGroup` never presents an empty document window, so macOS puts up the
+open panel instead and the situation cannot arise. The ports are ordinary
+single-window applications and can be started with no argument, so they need an
+answer the original never had to give. It is written down here because it was
+invented once, in the Rust port, and the other two spent a while silently
+disagreeing by showing a blank view.
+
 ## Gotchas (learned the hard way — every webview port hits these)
 
 - **Don't re-navigate from inside a navigation callback.** Following a link

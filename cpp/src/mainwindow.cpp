@@ -30,6 +30,12 @@
 #include <QWebEngineView>
 
 namespace {
+// Shown when no document is open. The ports are ordinary single-window apps and
+// can be launched with no file, which the SwiftUI original never could - it was
+// document-based, so macOS put up the open panel instead. See shared/spec.
+constexpr auto kEmptyStateBody =
+    "<p style='opacity:.6;padding:1rem'>Open a Markdown file to view it.</p>";
+
 #if defined(Q_OS_MACOS)
 constexpr auto kRevealText = "Show in Finder";
 #elif defined(Q_OS_WIN)
@@ -157,6 +163,8 @@ void MainWindow::buildUi() {
     tb->addSeparator();
     tb->addAction(pdfAct);
     tb->addAction(revealAct);
+
+    render(); // nothing open yet, so this puts up the empty state
 }
 
 void MainWindow::showHelp() {
@@ -297,8 +305,11 @@ void MainWindow::toggleZoom() {
 }
 
 void MainWindow::render() {
-    if (m_current.isEmpty())
+    if (m_current.isEmpty()) {
+        m_view->setHtml(renderer::page(kEmptyStateBody, assets::assetBaseUrl()));
+        setWindowTitle("Marklens");
         return;
+    }
     QFile f(m_current);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
         return;

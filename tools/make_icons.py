@@ -45,6 +45,12 @@ import pathlib
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # PySide6 is imported inside the functions that need it, so that --check and
+    # the Inkscape lookup work without it. This makes the annotations resolve.
+    from PySide6.QtGui import QImage
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHARED = ROOT / "shared"

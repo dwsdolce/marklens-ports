@@ -46,6 +46,13 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
     add_recent(&app, &path);
     let _ = build_menu(&app); // refresh Open Recent
 
+    // The frontend sets document.title, which a Tauri webview does not
+    // propagate to the native window - so without this the title bar stays at
+    // the value from tauri.conf.json while the Qt ports show the filename.
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(&format!("{} \u{2014} Marklens", filename(&path)));
+    }
+
     Ok(Rendered {
         body: renderer::render_body(&text),
         folder,
@@ -172,8 +179,14 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .credits(Some("A reimplementation of Marklens by Donald Jackson, https://github.com/donald-jackson/marklens"))
         .build();
 
+    // An application submenu named after the app is a macOS convention: that is
+    // where the platform expects About and Quit, and nowhere else has one. Qt
+    // handles this for the other two ports by giving those actions a MenuRole
+    // and letting the platform relocate them; Tauri has no equivalent, so the
+    // menu is simply built differently per platform.
+    #[cfg(target_os = "macos")]
     let app_menu = SubmenuBuilder::new(app, "Marklens")
-        .about(Some(about))
+        .about(Some(about.clone()))
         .separator()
         .quit()
         .build()?;
@@ -230,12 +243,29 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .maximize()
         .build()?;
 
-    let help = SubmenuBuilder::new(app, "Help")
-        .item(&MenuItemBuilder::with_id("help", "Marklens Help").build(app)?)
-        .build()?;
+    // Off macOS, About belongs at the foot of Help - which is where the Qt
+    // ports put it, and where Windows and Linux users look for it.
+    // `mut` is only used by one of the two cfg branches, so whichever platform
+    // this compiles for, the other branch's mutation is absent.
+    #[allow(unused_mut)]
+    let mut help_builder = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("help", "Marklens Help").build(app)?);
+    #[cfg(not(target_os = "macos"))]
+    {
+        help_builder = help_builder.separator().about(Some(about));
+    }
+    let help = help_builder.build()?;
 
-    let menu = MenuBuilder::new(app)
-        .items(&[&app_menu, &file, &edit, &view, &window, &help])
+    // `mut` is only used by one of the two cfg branches, so whichever platform
+    // this compiles for, the other branch's mutation is absent.
+    #[allow(unused_mut)]
+    let mut menu_builder = MenuBuilder::new(app);
+    #[cfg(target_os = "macos")]
+    {
+        menu_builder = menu_builder.item(&app_menu);
+    }
+    let menu = menu_builder
+        .items(&[&file, &edit, &view, &window, &help])
         .build()?;
     app.set_menu(menu)?;
     Ok(())

@@ -19,8 +19,8 @@
      wrapping to a second row is the closest thing that needs no JavaScript,
      and unlike shrinking it never puts a control out of reach. */
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 2px;
+  padding: 3px 6px;
   background: Canvas;
   border-bottom: 1px solid rgba(128, 128, 128, 0.3);
   /* The chrome must NOT inherit the document font. styles.css sets 16px in a
@@ -41,19 +41,23 @@
 }
 #toolbar button {
   font: inherit;
-  /* Labels are two words ("Zoom Out", "Actual Size"); without these a narrow
-     window wraps them instead of letting the toolbar scroll. */
+  /* Flat, like the QToolButtons the other two ports get from Qt: no border and
+     no fill until hovered. The bordered pill this replaced stood nearly twice
+     as tall, which is what pushed the row into wrapping in the first place. */
   white-space: nowrap;
   flex: 0 0 auto;
-  padding: 3px 10px;
-  border: 1px solid rgba(128, 128, 128, 0.35);
-  border-radius: 6px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   color: inherit;
   cursor: pointer;
 }
 #toolbar button:hover:not(:disabled) {
-  background: rgba(128, 128, 128, 0.15);
+  background: rgba(128, 128, 128, 0.16);
+}
+#toolbar button:active:not(:disabled) {
+  background: rgba(128, 128, 128, 0.28);
 }
 #toolbar button:disabled {
   opacity: 0.4;
@@ -64,13 +68,14 @@
   width: 1px;
   height: 18px;
   background: rgba(128, 128, 128, 0.3);
-  margin: 0 4px;
+  margin: 0 6px;
 }
 #toolbar #find-input {
   flex: 0 1 200px;
   min-width: 90px;
   font: inherit;
-  padding: 3px 8px;
+  margin: 0 4px;
+  padding: 2px 8px;
   border: 1px solid rgba(128, 128, 128, 0.4);
   border-radius: 6px;
   background: transparent;

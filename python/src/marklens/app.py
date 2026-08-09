@@ -28,6 +28,11 @@ from . import assets, links, renderer
 
 _MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdown", ".mkd", ".txt"}
 
+#: Shown when no document is open. The ports are ordinary single-window apps and
+#: can be launched with no file, which the SwiftUI original never could - it was
+#: document-based, so macOS put up the open panel instead. See shared/spec.
+_EMPTY_STATE_BODY = "<p style='opacity:.6;padding:1rem'>Open a Markdown file to view it.</p>"
+
 if sys.platform == "darwin":
     _REVEAL_TEXT = "Show in Finder"
 elif sys.platform.startswith("win"):
@@ -327,6 +332,10 @@ class MainWindow(QMainWindow):
 
     def _render(self) -> None:
         if self._current is None:
+            self._view.setHtml(
+                renderer.page(_EMPTY_STATE_BODY, asset_base=assets.asset_base_url())
+            )
+            self.setWindowTitle("Marklens")
             return
         try:
             text = self._current.read_text(encoding="utf-8")
