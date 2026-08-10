@@ -8,10 +8,34 @@
   display: none !important;
 }
 
+/* App shell: a chrome row that cannot move, and exactly one scroller.
+   The toolbar used to be `position: sticky` as the first block of a document
+   that scrolled as a whole. Sticky pins an element only while its containing
+   block is in view - it does not lift it out of the scrollable area - so in a
+   short window the toolbar rode the document down and off the top. Making body
+   a flex column takes it out of the scroll entirely: #content scrolls, the
+   toolbar cannot. It also gives the toolbar a width that tracks the window
+   rather than whatever the document happens to be. */
+html,
+body {
+  height: 100%;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+article#content {
+  flex: 1 1 auto;
+  /* Load-bearing: a flex item's automatic minimum size is its content, so
+     without this the article refuses to shrink below its natural height and
+     pushes the toolbar off the top - the very bug being fixed. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
 #toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   /* All three ports open at 900x720, which is narrower than this toolbar's

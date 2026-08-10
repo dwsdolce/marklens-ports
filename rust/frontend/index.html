@@ -2,7 +2,13 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- No viewport meta. It exists so mobile browsers stop pretending to be
+       980px wide, and it is inert in Chromium on the desktop - which is why
+       this looked fine on WebView2. WebKitGTK does honour it, and honouring it
+       means laying out to a computed viewport once and then scaling, rather
+       than laying out to the window and reflowing: on Linux the toolbar wrapped
+       against a width that was not the window's, and stayed wrapped when the
+       window was resized. -->
   <title>Marklens</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" id="hljs-theme" href="hljs-light.css" />
