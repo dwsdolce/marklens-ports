@@ -1,0 +1,71 @@
+#!/bin/bash
+#
+# Make every tracked script executable, in the working tree and in the index.
+#
+#   tools/fix_exec_bits            # fix them
+#   tools/fix_exec_bits --check    # list what is wrong, change nothing
+#
+# A file is a script if it starts with a shebang. That is the whole rule: it
+# catches build_*, run_*, setup, AppRun and the Python tools, and it leaves the
+# .bat, .iss, .desktop, .spec and .in files alone without anyone maintaining a
+# list. pyinstaller_entry.py has no shebang because it is not meant to be run
+# directly, so it is skipped for free.
+#
+# Why this exists at all:
+#
+#   Windows checkouts set core.fileMode=false, because NTFS has no executable
+#   bit to report. Git there ignores the working tree entirely and takes the
+#   mode from the index, so `chmod +x` does nothing that git will ever see and
+#   the bit has to be set with `git update-index --chmod=+x`.
+#
+#   Linux and macOS checkouts have core.fileMode=true, so the filesystem is
+#   authoritative. Checking out a file committed as 100644 makes it 644 on
+#   disk, and the next `git add` re-asserts that - undoing anything the Windows
+#   side set.
+#
+# A script written on Windows therefore starts life non-executable and stays
+# that way until someone notices on another platform. This sets both, which is
+# correct on either, and is idempotent - run it whenever a script is added.
+
+cd "$(dirname "$0")/.."
+
+check_only=0
+if [ "$1" = "--check" ]; then
+    check_only=1
+elif [ -n "$1" ]; then
+    echo "usage: fix_exec_bits [--check]"
+    exit 1
+fi
+
+wrong=0
+while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    # Two bytes is enough, and reading no further keeps binaries out of it.
+    [ "$(head -c2 -- "$file" 2>/dev/null)" = '#!' ] || continue
+
+    mode=$(git ls-files -s -- "$file" | awk '{print $1}')
+    [ "$mode" = "100755" ] && continue
+
+    wrong=$((wrong + 1))
+    if [ "$check_only" -eq 1 ]; then
+        echo "  not executable: $file"
+        continue
+    fi
+    chmod +x -- "$file"                      # for a filesystem that records it
+    git update-index --chmod=+x -- "$file"   # for a checkout that does not
+    echo "  fixed: $file"
+done < <(git ls-files)
+
+if [ "$wrong" -eq 0 ]; then
+    echo "All tracked scripts are executable."
+    exit 0
+fi
+
+if [ "$check_only" -eq 1 ]; then
+    echo
+    echo "$wrong script(s) need fixing. Re-run without --check."
+    exit 1
+fi
+
+echo
+echo "$wrong script(s) fixed and staged. Commit to make it stick."
