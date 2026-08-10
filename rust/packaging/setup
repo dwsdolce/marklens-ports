@@ -44,6 +44,25 @@ echo "Prerequisites (install these yourself)"
 #===============================================
 # Rust toolchain
 #===============================================
+# rustup installs into ~/.cargo/bin and adds it to PATH by editing ~/.profile
+# and ~/.bashrc - which does nothing for the shell that was already open when
+# you ran it. Reporting "install Rust" at that point is both wrong and annoying,
+# so look where rustup actually puts things and, if it is there, use it for the
+# rest of this script. The shell still needs `. "$HOME/.cargo/env"` (or a new
+# terminal) before `cargo` works interactively, which is said below.
+cargo_off_path=0
+if ! command -v cargo >/dev/null 2>&1; then
+    for cargo_home in "${CARGO_HOME:-}" "$HOME/.cargo"; do
+        [ -n "$cargo_home" ] || continue
+        if [ -x "$cargo_home/bin/cargo" ]; then
+            PATH="$cargo_home/bin:$PATH"
+            export PATH
+            cargo_off_path=1
+            break
+        fi
+    done
+fi
+
 if command -v cargo >/dev/null 2>&1; then
     cargo_version="$(cargo --version | awk '{print $2}')"
     # The dependency tree needs a toolchain new enough for the 2024 edition;
@@ -51,7 +70,13 @@ if command -v cargo >/dev/null 2>&1; then
     major="${cargo_version%%.*}"
     minor="$(echo "$cargo_version" | cut -d. -f2)"
     if [ "$major" -gt 1 ] || [ "$minor" -ge 85 ]; then
-        ok "cargo $cargo_version"
+        if [ "$cargo_off_path" -eq 1 ]; then
+            ok "cargo $cargo_version (found in $(dirname "$(command -v cargo)"))"
+            echo "           not on this shell's PATH yet - run:  . \"\$HOME/.cargo/env\""
+            echo "           or open a new terminal. Only this script is unblocked."
+        else
+            ok "cargo $cargo_version"
+        fi
     else
         bad "cargo $cargo_version is too old"
         howto "  rust       rustup update
