@@ -168,7 +168,7 @@ then
         --app-drop-link 460 180 \
         --hide-extension "${APP_NAME}.app" \
         --format ULFO \
-        --volicon "../shared/icon.icns" \
+        --volicon "../shared/icon-cpp.icns" \
         $installer_name \
         "${STAGE_DIR}/"
 else

@@ -140,7 +140,7 @@ then
         --app-drop-link 460 180 \
         --hide-extension "Marklens Python.app" \
         --format ULFO \
-        --volicon "../shared/icon.icns" \
+        --volicon "../shared/icon-py.icns" \
         $installer_name \
         "dist/"
 else

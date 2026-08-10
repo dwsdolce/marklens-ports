@@ -123,7 +123,7 @@ fi
 # Desktop entry and icon - linuxdeploy needs both, and puts copies at the
 # AppDir root itself.
 cp packaging/marklens-cpp.desktop "$APPDIR/usr/share/applications/"
-cp ../shared/icon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-cpp.png"
+cp ../shared/icon-cpp.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-cpp.png"
 
 # AppRun launcher. linuxdeploy would generate one, but ours exports the
 # QtWebEngine sandbox setting that a relocated Chromium needs.
@@ -160,7 +160,7 @@ ARCH=$ARCH OUTPUT="$OUT" "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/marklens-cpp" \
     --desktop-file "$APPDIR/usr/share/applications/marklens-cpp.desktop" \
-    --icon-file ../shared/icon.png \
+    --icon-file ../shared/icon-cpp.png \
     --icon-filename marklens-cpp \
     --custom-apprun packaging/AppRun \
     --plugin qt \

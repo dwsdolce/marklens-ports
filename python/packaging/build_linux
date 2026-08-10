@@ -116,7 +116,7 @@ cp packaging/marklens-py.desktop "$APPDIR/usr/share/applications/"
 
 # Icon - at the AppDir root under the name the desktop entry's Icon= field
 # uses, and again in the hicolor theme.
-ICON=../shared/icon.png
+ICON=../shared/icon-py.png
 cp "$ICON" "$APPDIR/marklens-py.png"
 cp "$ICON" "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-py.png"
 
