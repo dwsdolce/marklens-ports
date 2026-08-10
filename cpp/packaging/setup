@@ -104,9 +104,14 @@ esac
 #===============================================
 # Qt 6 - the same search CMakeLists.txt does
 #===============================================
+# The same three places CMakeLists.txt looks, in the same order: an explicit
+# QTDIR, then the online installer's own tree - C:/Qt on Windows, ~/Qt or
+# /opt/Qt elsewhere - then whatever a package manager installed.
 qt_kit="$QTDIR"
 if [ -z "$qt_kit" ]; then
-    for candidate in $(ls -d /c/Qt/*/msvc*_64 /c/Qt/*/mingw*_64 2>/dev/null | sort -Vr); do
+    for candidate in $(ls -d /c/Qt/*/msvc*_64 /c/Qt/*/mingw*_64 \
+                             "$HOME"/Qt/*/gcc_64 /opt/Qt/*/gcc_64 \
+                             "$HOME"/Qt/*/macos /opt/Qt/*/macos 2>/dev/null | sort -Vr); do
         [ -d "$candidate/lib/cmake/Qt6Core" ] && qt_kit="$candidate" && break
     done
 fi
@@ -127,6 +132,8 @@ if [ -z "$qt_kit" ]; then
              installed from here. Select Qt 6 for your compiler, and tick
              Qt WebEngine, Qt WebChannel and Qt Positioning under
              Additional Libraries.
+             The online installer's own tree is searched too: C:/Qt on
+             Windows, ~/Qt or /opt/Qt elsewhere.
              macOS: brew install qt   Linux: your distribution's qt6 packages"
 else
     ok "Qt 6 at $qt_kit"

@@ -92,15 +92,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # their usual places, without the caller exporting anything first. An explicit
 # CMAKE_PREFIX_PATH, QTDIR or MD4C_ROOT always wins over what is guessed here.
 #
-# On macOS and Linux the package managers put both dependencies somewhere the
-# default search already covers. Windows has no such convention, so the Qt
-# online installer's layout is searched directly.
-if(WIN32 AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
+# A Qt from a package manager - Homebrew, apt - lands where the default search
+# already looks. A Qt from the online installer does not, on any platform: it
+# unpacks a versioned tree of its own, under C:/Qt on Windows and ~/Qt
+# elsewhere. Those are searched here so that neither case needs an exported
+# CMAKE_PREFIX_PATH.
+if(NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
     set(_qt_hint "$ENV{QTDIR}")
     if(NOT _qt_hint)
-        # C:/Qt/<version>/<kit> - newest version first, and only a kit that
-        # actually carries WebEngine, which is a separate optional download.
-        file(GLOB _qt_kits "C:/Qt/*/msvc*_64" "C:/Qt/*/mingw*_64")
+        # <root>/<version>/<kit>, newest version first, and only a kit that
+        # actually carries WebEngine - a separate, optional download whose
+        # absence is the whole reason this checks rather than assumes.
+        if(WIN32)
+            file(GLOB _qt_kits "C:/Qt/*/msvc*_64" "C:/Qt/*/mingw*_64")
+        elseif(APPLE)
+            file(GLOB _qt_kits "$ENV{HOME}/Qt/*/macos" "/opt/Qt/*/macos")
+        else()
+            file(GLOB _qt_kits "$ENV{HOME}/Qt/*/gcc_64" "/opt/Qt/*/gcc_64")
+        endif()
         list(SORT _qt_kits COMPARE NATURAL ORDER DESCENDING)
         foreach(_kit IN LISTS _qt_kits)
             if(EXISTS "${_kit}/lib/cmake/Qt6WebEngineWidgets")
