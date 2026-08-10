@@ -38,10 +38,13 @@ elif [ -n "$1" ]; then
 fi
 
 wrong=0
+# The file list comes from `git grep -Il`, which lists tracked text files and
+# skips anything git considers binary - so the icons never reach the read below,
+# which would otherwise warn about their null bytes.
 while IFS= read -r file; do
     [ -f "$file" ] || continue
-    # Two bytes is enough, and reading no further keeps binaries out of it.
-    [ "$(head -c2 -- "$file" 2>/dev/null)" = '#!' ] || continue
+    # Two bytes is enough to spot a shebang.
+    [ "$(head -c2 -- "$file")" = '#!' ] || continue
 
     mode=$(git ls-files -s -- "$file" | awk '{print $1}')
     [ "$mode" = "100755" ] && continue
@@ -54,7 +57,7 @@ while IFS= read -r file; do
     chmod +x -- "$file"                      # for a filesystem that records it
     git update-index --chmod=+x -- "$file"   # for a checkout that does not
     echo "  fixed: $file"
-done < <(git ls-files)
+done < <(git grep -Il '' -- .)
 
 if [ "$wrong" -eq 0 ]; then
     echo "All tracked scripts are executable."
