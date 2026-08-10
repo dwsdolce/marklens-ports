@@ -59,6 +59,13 @@ SOURCE = SHARED / "icon.svg"
 #: Rendered at this size and downscaled from there; macOS wants 1024.
 SIZE = 1024
 
+#: The PNG is written at this size, not at SIZE. macOS gets its 1024 from the
+#: ICNS, so nothing needs the PNG that big: it is the in-app window icon and
+#: the icon Linux packaging stages into the AppDir. 512 is the largest the icon
+#: theme spec has a directory for - hicolor/512x512 - and linuxdeploy rejects
+#: anything above it outright, so a 1024 PNG cannot be packaged at all.
+PNG_SIZE = 512
+
 #: label, badge fill, text colour. The fills are chosen to sit against the
 #: plate's blue rather than to match any project's branding: a blue badge on a
 #: blue plate would not read at all.
@@ -261,8 +268,10 @@ def main() -> None:
             continue
 
         image = badge(plate, label, fill, ink, family)
-        if not image.save(str(png), "PNG"):
-            sys.exit(f"make_icons: could not write {png}")
+        # The ICNS keeps the full-size image; only the PNG is scaled down.
+        # build_ico reads that scaled file, which costs it nothing: its largest
+        # entry is 256, and it declines to upscale rather than blur.
+        png.write_bytes(png_bytes(image, PNG_SIZE))
         build_ico(png, ico)
         write_icns(image, icns)
         print(f"  wrote icon-{port}.{{png,ico,icns}}  [{label}] {fill}")
