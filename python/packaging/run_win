@@ -14,6 +14,11 @@ cd "$(dirname "$0")/.."
 
 for venv in ".venv" "../.venv"; do
     if [ -x "$venv/Scripts/python.exe" ]; then
+        # Resolved, not "../.venv": Python's site module compares sys.prefix
+        # against the path recorded in pyvenv.cfg as a string, so an unresolved
+        # ".." in the interpreter's path makes it warn that the prefix is
+        # unexpected - while pointing at the very same directory.
+        venv=$(cd "$venv" && pwd -P)
         echo "Running the source from $venv"
         exec "$venv/Scripts/python.exe" -m marklens "$@"
     fi

@@ -16,9 +16,12 @@ if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" -m marklens %*
     exit /b %errorlevel%
 )
-if exist "..\.venv\Scripts\python.exe" (
-    echo Running the source from ..\.venv
-    "..\.venv\Scripts\python.exe" -m marklens %*
+REM %%~fi resolves the "..", which Python's site module otherwise reports as an
+REM unexpected sys.prefix - while pointing at the very same directory.
+for %%i in ("..\.venv") do set "VENV=%%~fi"
+if exist "%VENV%\Scripts\python.exe" (
+    echo Running the source from %VENV%
+    "%VENV%\Scripts\python.exe" -m marklens %*
     exit /b %errorlevel%
 )
 
