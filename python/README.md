@@ -6,10 +6,37 @@ uses; the Python side does Markdown→HTML, link routing, and file watching.
 ## Setup
 
 ```bash
-cd python
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
+packaging/setup            # check the environment, install what it can
+packaging/setup --check    # report only, change nothing
+packaging\setup.bat        # cmd, same checks
 ```
+
+`pyproject.toml` is this port's manifest and covers every library dependency,
+which is why there is far less here than for the C++ port. What a manifest
+cannot cover is the environment around it, and that is what `setup` checks: the
+virtual environment, the interpreter inside it, and — only when you come to
+package — `appimagetool`, `create-dmg` or Inno Setup.
+
+**One virtual environment, at the repository root**, `marklens-ports/.venv` —
+not `python/.venv`. One environment for the project rather than one per port;
+`setup` reports a `python/.venv` as an error, because once two exist you install
+into one and run the other, and the difference surfaces as an import failure
+somewhere unrelated.
+
+Creating and activating it are yours to do — VS Code does both if you open
+`marklens-ports` as the workspace folder (*Command Palette > Python: Create
+Environment > Venv*), and activates it in every new terminal. By hand, from the
+repository root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate      # .venv\Scripts\activate in cmd
+```
+
+Then `packaging/setup` installs `-e ".[dev]"` into whatever is active. `setup`
+is the only script that looks at any of this: `run_*` and `build_*` use the
+interpreter they are given, so the venv you activate is the venv everything
+uses.
 
 ## Run
 
@@ -20,8 +47,8 @@ packaging/run_linux ../shared/spec/sample/index.md
 ```
 
 This is the tool for iterating on the code. It always runs the working tree,
-through the venv, exactly as `python -m marklens` does. There is no
-build step — that is the whole point of this port.
+exactly as `python -m marklens` does, through whichever venv you have active.
+There is no build step — that is the whole point of this port.
 Read the script if you want the details; there is nothing in it you could not
 type yourself, which is rather the point.
 
@@ -30,9 +57,9 @@ It never runs anything under `dist/` — that is what **Package** is for.
 ## Check
 
 ```bash
-PYTHONPATH=tests .venv/bin/python -m pytest -q      # whole suite
-.venv/bin/ruff check src tests
-.venv/bin/mypy src
+PYTHONPATH=tests python -m pytest -q      # whole suite, with the venv active
+ruff check src tests
+mypy src
 ```
 
 `pytest` runs everything: the shared-fixture logic tests (`test_renderer.py`,
@@ -53,7 +80,7 @@ packaging/build_linux      # -> dist/Marklens-Python-<ver>-<arch>.AppImage
 PyInstaller does the freezing (`packaging/marklens.spec`), collecting PySide6
 wholesale so QtWebEngine's Chromium, its `.pak` resources and its ICU data all
 come along. The shared assets are bundled under `shared/`, which is where
-`assets._shared_dir()` looks when frozen. Needs `pip install -e ".[packaging]"`;
+`assets._shared_dir()` looks when frozen. Needs `packaging/setup` to have run;
 see [../packaging/README.md](../packaging/README.md) for the per-platform tools
 and for signing.
 

@@ -109,11 +109,57 @@ packaging/build_linux      # -> dist/Marklens-Cpp-<ver>-<arch>.AppImage
 ```
 
 These configure into `build-packaging/` and stage into `dist/`, so the `build/`
-tree above is left alone. The Qt runtime is deployed with `windeployqt`,
-`macdeployqt` or `linuxdeploy` + its Qt plugin, and `shared/` is installed
-beside the executable for `assets::sharedDir()` to find. See
-[../packaging/README.md](../packaging/README.md) for the per-platform tools and
-for signing.
+tree above is left alone, and `shared/` is installed beside the executable for
+`assets::sharedDir()` to find.
+
+### Deploying the Qt runtime
+
+A Qt program cannot just be copied: it needs its libraries, its platform and
+image-format plugins, and — because this uses QtWebEngine — the
+`QtWebEngineProcess` helper plus Chromium's `.pak` and ICU data. Each platform
+has a tool that works out what those are and copies them in. **Two of the three
+come with Qt; the third does not, which is the entire source of the confusion:**
+
+| Platform | Tool | Where it comes from |
+|---|---|---|
+| Windows | `windeployqt` | **Comes with Qt**, in `<kit>/bin`. Nothing to install. |
+| macOS | `macdeployqt` | **Comes with Qt**, in `<kit>/bin`. Nothing to install. |
+| Linux | `linuxdeploy` **+** `linuxdeploy-plugin-qt` | **Two separate downloads.** Not Qt products. |
+
+`build_win` and `build_mac` need no help finding theirs: `PATH` first, then the
+`bin/` of the Qt that CMake recorded in `CMakeCache.txt` (`build_win` also tries
+each `CMAKE_PREFIX_PATH` root). Reading it out of the cache means the deploy
+tool always matches the Qt that built the executable. If you have a Qt that can
+build this port you already have the tool that deploys it — which is why
+`packaging/setup` does not check for either.
+
+Linux is the odd one out because **Qt ships no `linuxdeployqt`**. `linuxdeploy`
+is a third-party tool, and Qt awareness is a *plugin* for it — hence two files,
+not one. Both are AppImages from GitHub, and both must be renamed: the release
+assets carry an architecture suffix, while `build_linux` looks for the bare
+names and `linuxdeploy` locates the plugin by searching `PATH` for exactly
+`linuxdeploy-plugin-qt`.
+
+```bash
+mkdir -p ~/bin
+arch=$(uname -m)
+curl -Lo ~/bin/linuxdeploy \
+  https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage
+curl -Lo ~/bin/linuxdeploy-plugin-qt \
+  https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
+chmod +x ~/bin/linuxdeploy ~/bin/linuxdeploy-plugin-qt
+```
+
+`packaging/setup` checks for both and prints these commands if either is
+missing; `build_linux` looks in `$LINUXDEPLOY` / `$LINUXDEPLOY_PLUGIN_QT`, then
+`PATH`, then `~/bin`, and prints them too. Running an AppImage needs FUSE — on
+Ubuntu 22.04 and later, `sudo apt install libfuse2`.
+
+The installer format on top is separate again: Windows needs
+[Inno Setup 6](https://jrsoftware.org/isdl.php), macOS needs `create-dmg`
+(`brew install create-dmg`), and Linux needs nothing more, since `linuxdeploy
+--output appimage` produces the AppImage itself. `packaging/setup` reports all
+of these. See [../packaging/README.md](../packaging/README.md) for signing.
 
 Only the Windows packaging path has actually been run; see the repository
 [README](../README.md) for what that means.

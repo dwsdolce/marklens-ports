@@ -133,19 +133,45 @@ chmod +x "$APPDIR/AppRun"
 #===============================================
 # Build the AppImage
 #===============================================
-LINUXDEPLOY="${LINUXDEPLOY:-$HOME/bin/linuxdeploy}"
-LINUXDEPLOY_PLUGIN_QT="${LINUXDEPLOY_PLUGIN_QT:-$HOME/bin/linuxdeploy-plugin-qt}"
+# The configured path first, then PATH, then ~/bin - the same three places, in
+# the same order, that packaging/setup looks in. They used to disagree: setup
+# accepted a linuxdeploy on PATH and this script only ever looked at ~/bin, so
+# setup could report "ok" for a tool the build then failed to find.
+find_tool() {
+    if [ -n "$2" ]; then
+        echo "$2"
+    elif command -v "$1" >/dev/null 2>&1; then
+        command -v "$1"
+    else
+        echo "$HOME/bin/$1"
+    fi
+}
+LINUXDEPLOY=$(find_tool linuxdeploy "$LINUXDEPLOY")
+LINUXDEPLOY_PLUGIN_QT=$(find_tool linuxdeploy-plugin-qt "$LINUXDEPLOY_PLUGIN_QT")
 
+# Both are AppImages downloaded from GitHub, and both have to be renamed: this
+# script looks for the bare names, and linuxdeploy itself finds the plugin by
+# looking for "linuxdeploy-plugin-qt" on PATH. The release assets are named
+# with an architecture suffix, so an unrenamed download is never found.
+arch=$(uname -m)
 if [ ! -x "$LINUXDEPLOY" ]; then
-    echo "linuxdeploy not found at $LINUXDEPLOY"
-    echo "Download it from https://github.com/linuxdeploy/linuxdeploy/releases"
+    echo "linuxdeploy not found at $LINUXDEPLOY (looked at \$LINUXDEPLOY, on PATH, then ~/bin)"
+    echo
+    echo "  mkdir -p ~/bin"
+    echo "  curl -Lo ~/bin/linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage"
+    echo "  chmod +x ~/bin/linuxdeploy"
+    echo
     echo "or set LINUXDEPLOY=/path/to/linuxdeploy"
     exit 1
 fi
 if [ ! -x "$LINUXDEPLOY_PLUGIN_QT" ]; then
-    echo "linuxdeploy-plugin-qt not found at $LINUXDEPLOY_PLUGIN_QT"
-    echo "Download it from https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases"
-    echo "or set LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt"
+    echo "linuxdeploy-plugin-qt not found at $LINUXDEPLOY_PLUGIN_QT (looked at \$LINUXDEPLOY_PLUGIN_QT, on PATH, then ~/bin)"
+    echo
+    echo "  curl -Lo ~/bin/linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage"
+    echo "  chmod +x ~/bin/linuxdeploy-plugin-qt"
+    echo
+    echo "Qt ships no linuxdeployqt; Qt support for linuxdeploy is this separate"
+    echo "plugin. Or set LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt"
     exit 1
 fi
 

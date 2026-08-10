@@ -24,7 +24,7 @@ Each port has a setup step that leaves it ready to build, and the build scripts
 need nothing exported afterwards:
 
 ```bash
-python/packaging/setup     # or: pip install -e ".[packaging]" in a venv
+python/packaging/setup     # with the repository-root venv activated
 cpp/packaging/setup        # cpp\packaging\setup.bat in cmd
 rust/packaging/setup       # rust\packaging\setup.bat in cmd
 ```
@@ -163,24 +163,34 @@ installer gets to make.
 
 ## Per-port requirements
 
-**Python** — a venv with the packaging extra (`pip install -e ".[packaging]"`);
-the scripts accept either `python/.venv` or a shared `.venv` at the repository
-root. PyInstaller collects PySide6 wholesale, QtWebEngine included. Windows
-also needs [Inno Setup 6](https://jrsoftware.org/isdl.php); macOS needs
-`create-dmg`; Linux needs
-[appimagetool](https://github.com/AppImage/AppImageKit/releases) at `~/bin` or
-`$APPIMAGETOOL`.
+**Python** — one venv, at the repository root (`marklens-ports/.venv`), with the
+dev extra installed, and **activated before you run anything**. The scripts use
+the interpreter they are given rather than going looking for one, so the venv
+you activate is the venv they use; `python/packaging/setup` is the only thing
+that checks, and it treats a second venv at `python/.venv` as an error.
+PyInstaller collects PySide6 wholesale, QtWebEngine included — which is why
+this port needs no Qt deploy tool at all. Windows also needs
+[Inno Setup 6](https://jrsoftware.org/isdl.php); macOS needs `create-dmg`
+(`brew install create-dmg`); Linux needs `appimagetool`:
+
+```bash
+mkdir -p ~/bin
+curl -Lo ~/bin/appimagetool \
+  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage
+chmod +x ~/bin/appimagetool
+```
+
+`python/packaging/setup` checks for it and prints exactly that; `build_linux`
+takes `$APPIMAGETOOL`, then `PATH`, then `~/bin`.
 
 **C++** — CMake, Qt 6 with WebEngineWidgets, md4c, and Python 3. Set
 `CMAKE_PREFIX_PATH` to the Qt installation (semicolon-separated if md4c lives
 somewhere of its own). No generator or compiler is forced: CMake picks the
 platform default, which must match the ABI of the Qt build you point it at —
 MSVC for Qt's official Windows binaries, Apple Clang for Homebrew Qt, system
-GCC on Linux. The Qt runtime is deployed with `windeployqt` / `macdeployqt` /
-`linuxdeploy` + its Qt plugin (at `~/bin` or `$LINUXDEPLOY` and
-`$LINUXDEPLOY_PLUGIN_QT`). Packaging builds into `cpp/build-packaging/` and
-stages into `cpp/dist/`, leaving the `cpp/build/` tree from `cpp/README.md`
-alone.
+GCC on Linux. Packaging builds into `cpp/build-packaging/` and stages into
+`cpp/dist/`, leaving the `cpp/build/` tree from `cpp/README.md` alone. For the
+deploy tools, see **Deploying the Qt runtime** below.
 
 Two Windows snags worth knowing. **Qt WebEngine is not part of the base Qt
 install** — add it with the maintenance tool
@@ -203,6 +213,55 @@ start without, and it builds the disk image and AppImage itself. Tauri also
 registers the Markdown file types as a full association rather than an
 "Open with" entry — the one place the three ports differ, and the reason to
 install this one last if you want it to own `.md`.
+
+## Deploying the Qt runtime
+
+Only the **C++** port needs this. A Qt program cannot just be copied: it needs
+its libraries, its platform and image-format plugins, and — with QtWebEngine —
+the `QtWebEngineProcess` helper plus Chromium's `.pak` and ICU data. The Python
+port sidesteps the whole question because PyInstaller has already collected
+PySide6 and everything under it; the Rust port has no Qt at all, using the
+platform webview.
+
+**Two of the three tools come with Qt; the Linux one does not.** That asymmetry
+is the only thing that makes this confusing.
+
+| Platform | Tool | Where it comes from | Checked by `setup`? |
+|---|---|---|---|
+| Windows | `windeployqt` | Comes with Qt, in `<kit>/bin` | No — nothing to install |
+| macOS | `macdeployqt` | Comes with Qt, in `<kit>/bin` | No — nothing to install |
+| Linux | `linuxdeploy` **+** `linuxdeploy-plugin-qt` | Two separate GitHub downloads | Yes |
+
+`build_win` and `build_mac` look on `PATH`, then in the `bin/` of the Qt that
+CMake recorded in `CMakeCache.txt`, so the deploy tool always matches the Qt
+that built the executable rather than whatever the environment happens to point
+at; `build_win` tries each `CMAKE_PREFIX_PATH` root after that. A Qt good enough
+to build the port already carries the tool that deploys it.
+
+Qt ships no `linuxdeployqt`. `linuxdeploy` is a third-party tool and Qt support
+is a *plugin* for it, so Linux needs two files, both AppImages, and both must be
+renamed — the release assets carry an architecture suffix, `build_linux` looks
+for the bare names, and `linuxdeploy` finds the plugin by searching `PATH` for
+exactly `linuxdeploy-plugin-qt`:
+
+```bash
+mkdir -p ~/bin
+arch=$(uname -m)
+curl -Lo ~/bin/linuxdeploy \
+  https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage
+curl -Lo ~/bin/linuxdeploy-plugin-qt \
+  https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
+chmod +x ~/bin/linuxdeploy ~/bin/linuxdeploy-plugin-qt
+```
+
+`cpp/packaging/setup` prints exactly these commands when either is missing, and
+`build_linux` takes `$LINUXDEPLOY` / `$LINUXDEPLOY_PLUGIN_QT`, then `PATH`, then
+`~/bin`. Running an AppImage needs FUSE — on Ubuntu 22.04 and later,
+`sudo apt install libfuse2`.
+
+No separate `appimagetool` is needed for the C++ port: `linuxdeploy --output
+appimage` produces the AppImage. The Python port does need it, because it has no
+linuxdeploy step to hide it behind.
 
 ## Signing
 

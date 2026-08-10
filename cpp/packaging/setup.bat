@@ -37,9 +37,6 @@ if errorlevel 1 (
     for /f "tokens=3" %%v in ('cmake --version 2^>nul ^| findstr /b "cmake version"') do call :ok "cmake %%v"
 )
 
-where git >nul 2>&1
-if errorlevel 1 call :bad "git - https://git-scm.com/download/win (needed to fetch md4c)"
-
 REM ===============================================
 REM MSVC. CMake locates it itself, so only presence is checked.
 REM ===============================================
@@ -102,6 +99,22 @@ if not defined QT_KIT (
 )
 
 REM ===============================================
+REM Packaging tools - reported, never required
+REM ===============================================
+REM build_win.bat needs something that building and running do not, so it is
+REM listed rather than demanded: a missing one only matters at the moment you
+REM package, and the build script says so again then.
+echo.
+echo Packaging (only needed for build_win.bat)
+
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist "%ISCC%" (
+    call :ok "Inno Setup 6"
+) else (
+    call :note "Inno Setup 6 - needed for the installer:  https://jrsoftware.org/isdl.php"
+)
+
+REM ===============================================
 REM Dependencies
 REM ===============================================
 echo.
@@ -112,6 +125,11 @@ if exist "%MD4C_SRC%\src\md4c-html.h" (
 ) else if "%CHECK_ONLY%"=="1" (
     call :bad "md4c - re-run without --check to fetch it"
 ) else (
+    where git >nul 2>&1
+    if errorlevel 1 (
+        call :bad "md4c - needs git to fetch the sources: https://git-scm.com/download/win"
+        goto :md4c_done
+    )
     echo   ....     fetching md4c sources into third_party\ ...
     if not exist "%THIRD_PARTY%" mkdir "%THIRD_PARTY%"
     if exist "%MD4C_SRC%" rmdir /s /q "%MD4C_SRC%"
@@ -122,6 +140,7 @@ if exist "%MD4C_SRC%\src\md4c-html.h" (
         call :bad "md4c - the clone failed; fetch it by hand or set MD4C_ROOT"
     )
 )
+:md4c_done
 
 REM ===============================================
 REM Verdict
@@ -151,4 +170,9 @@ exit /b 0
 :bad
 echo   MISSING  %~1
 set /a MISSING+=1
+exit /b 0
+
+:note
+REM Absent but not fatal: wanted by build_win.bat, not by building or running.
+echo   --       %~1
 exit /b 0

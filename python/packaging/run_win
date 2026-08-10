@@ -4,26 +4,27 @@
 #
 #   python/packaging/run_win [document.md] [args...]
 #
-# This is the tool for iterating on the code: it runs the working tree through
-# the venv, exactly as `python -m marklens` does, and never the frozen bundle
-# under dist/. Use packaging/build_win when you want that instead.
+# This is the tool for iterating on the code: it runs the working tree, exactly
+# as `python -m marklens` does, and never the frozen bundle under dist/. Use
+# packaging/build_win when you want that instead.
 #
 # There is no build step here - that is the whole point of the port.
+#
+# Which python that is was settled before this script started: the venv you
+# activated, or the one VS Code activated in its terminal. Nothing here goes
+# looking for a venv. A script that picks its own interpreter can pick a
+# different one from the one you have been installing into, and the project
+# keeps a single environment at the repository root precisely so that cannot
+# happen. python/packaging/setup is what checks it.
 
 cd "$(dirname "$0")/.."
 
-for venv in ".venv" "../.venv"; do
-    if [ -x "$venv/Scripts/python.exe" ]; then
-        # Resolved, not "../.venv": Python's site module compares sys.prefix
-        # against the path recorded in pyvenv.cfg as a string, so an unresolved
-        # ".." in the interpreter's path makes it warn that the prefix is
-        # unexpected - while pointing at the very same directory.
-        venv=$(cd "$venv" && pwd -P)
-        echo "Running the source from $venv"
-        exec "$venv/Scripts/python.exe" -m marklens "$@"
-    fi
-done
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "No virtual environment is active."
+    echo "Activate it, then run this again:"
+    echo "    source .venv/Scripts/activate      # from the repository root"
+    echo "Opening marklens-ports in VS Code activates it in new terminals."
+    exit 1
+fi
 
-echo "No virtual environment at python/.venv or ../.venv"
-echo "Create one, then: pip install -e \".[dev]\""
-exit 1
+exec python -m marklens "$@"

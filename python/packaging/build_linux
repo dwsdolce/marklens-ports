@@ -11,9 +11,10 @@
 #   python/dist/marklens-py/                              the PyInstaller bundle
 #   python/dist/Marklens-Python-<version>-<arch>.AppImage
 #
-# Requires appimagetool (https://github.com/AppImage/AppImageKit/releases),
-# found at ~/bin/appimagetool or wherever APPIMAGETOOL points, and a venv with
-# the packaging extra installed: pip install -e ".[packaging]"
+# Requires the project venv to be active (packaging/setup checks it) and
+# appimagetool, found at $APPIMAGETOOL, on PATH, or at ~/bin - see
+# https://github.com/AppImage/appimagetool/releases, or run packaging/setup,
+# which prints the curl and chmod for you.
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
@@ -37,28 +38,17 @@ esac
 #===============================================
 # Setup the correct python environment
 #===============================================
-# Two locations are accepted: python/.venv, which python/README.md describes,
-# and a shared .venv at the repository root, which is convenient when working
-# on more than one port at a time.
-for candidate in ".venv" "../.venv"; do
-    if [ -f "$candidate/bin/activate" ]; then
-        VENV="$candidate"
-        break
-    fi
-done
-
-if [ -z "$VENV" ]; then
-    echo "No virtual environment at python/.venv or ../.venv"
-    echo "Create one, then: pip install -e \".[packaging]\""
+# The venv is yours to activate - from the shell, or by opening marklens-ports
+# in VS Code, which activates it in new terminals. Nothing here goes looking for
+# one: a script that picks its own interpreter can pick a different one from the
+# one you have been installing into. python/packaging/setup is what checks it.
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "No virtual environment is active."
+    echo "Activate it, then run this again:"
+    echo "    source .venv/bin/activate      # from the repository root"
     exit 1
 fi
-
-echo "Activating virtual environment $VENV"
-source "$VENV/bin/activate"
-if [ $? -ne 0 ]; then
-    echo "Activating virtual environment failed"
-    exit 1
-fi
+echo "Using $VIRTUAL_ENV"
 
 echo "Running build for `uname -m` architecture"
 
@@ -127,10 +117,25 @@ chmod +x "$APPDIR/AppRun"
 #===============================================
 # Build the AppImage
 #===============================================
-APPIMAGETOOL="${APPIMAGETOOL:-$HOME/bin/appimagetool}"
+# $APPIMAGETOOL first, then PATH, then ~/bin - the same three places, in the
+# same order, that packaging/setup looks in, so a tool setup reported as "ok"
+# is a tool this script can find.
+if [ -z "$APPIMAGETOOL" ]; then
+    if command -v appimagetool >/dev/null 2>&1; then
+        APPIMAGETOOL=$(command -v appimagetool)
+    else
+        APPIMAGETOOL="$HOME/bin/appimagetool"
+    fi
+fi
 if [ ! -x "$APPIMAGETOOL" ]; then
-    echo "appimagetool not found at $APPIMAGETOOL"
-    echo "Download it from https://github.com/AppImage/AppImageKit/releases"
+    # The release asset carries an architecture suffix; this looks for the bare
+    # name, so the download has to be renamed as well as made executable.
+    echo "appimagetool not found at $APPIMAGETOOL (looked at \$APPIMAGETOOL, on PATH, then ~/bin)"
+    echo
+    echo "  mkdir -p ~/bin"
+    echo "  curl -Lo ~/bin/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
+    echo "  chmod +x ~/bin/appimagetool"
+    echo
     echo "or set APPIMAGETOOL=/path/to/appimagetool"
     exit 1
 fi

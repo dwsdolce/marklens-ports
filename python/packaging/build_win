@@ -11,9 +11,8 @@
 #   python/dist/marklens-py/                        the PyInstaller bundle
 #   python/installer/Marklens_Python_V<version>.exe
 #
-# Runs under Cygwin or Git Bash. Requires Inno Setup 6
-# (https://jrsoftware.org/isdl.php) and a venv with the packaging extra
-# installed: pip install -e ".[packaging]"
+# Runs under Cygwin or Git Bash. Requires the project venv to be active
+# (packaging/setup checks it) and Inno Setup 6 (https://jrsoftware.org/isdl.php)
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
@@ -37,33 +36,24 @@ esac
 #===============================================
 # Setup the correct python environment
 #===============================================
-# The venv executables are called by path rather than through `activate`, which
-# does not work reliably under Cygwin: it exports Unix-style paths that the
-# native Windows python cannot read.
-#
-# Two locations are accepted: python/.venv, which python/README.md describes,
-# and a shared .venv at the repository root, which is convenient when working
-# on more than one port at a time.
-for candidate in ".venv" "../.venv"; do
-    if [ -f "$candidate/Scripts/python.exe" ]; then
-        VENV="$candidate"
-        break
-    fi
-done
-
-if [ -z "$VENV" ]; then
-    echo "No virtual environment at python/.venv or ../.venv"
-    echo "Create one, then: pip install -e \".[packaging]\""
+# The venv is yours to activate - from the shell, or by opening marklens-ports
+# in VS Code, which activates it in new terminals. Nothing here goes looking for
+# one: a script that picks its own interpreter can pick a different one from the
+# one you have been installing into. python/packaging/setup is what checks it.
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "No virtual environment is active."
+    echo "Activate it, then run this again:"
+    echo "    source .venv/Scripts/activate      # from the repository root"
     exit 1
 fi
-echo "Using virtual environment $VENV"
+echo "Using $VIRTUAL_ENV"
 
-PYTHON="$VENV/Scripts/python.exe"
-PYINSTALLER="$VENV/Scripts/pyinstaller.exe"
+PYTHON=python
+PYINSTALLER=pyinstaller
 
-if [ ! -f "$PYINSTALLER" ]; then
-    echo "pyinstaller is not installed in $VENV"
-    echo "Run: pip install -e \".[packaging]\""
+if ! command -v "$PYINSTALLER" >/dev/null 2>&1; then
+    echo "pyinstaller is not installed in $VIRTUAL_ENV"
+    echo "Run: packaging/setup"
     exit 1
 fi
 

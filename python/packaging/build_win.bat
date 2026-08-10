@@ -7,8 +7,8 @@ REM Produces:
 REM   python\dist\marklens-py\                        the PyInstaller bundle
 REM   python\installer\Marklens_Python_V<version>.exe
 REM
-REM Requires Inno Setup 6 (https://jrsoftware.org/isdl.php) and a venv with the
-REM packaging extra installed: pip install -e ".[packaging]"
+REM Requires the project venv to be active (packaging\setup.bat checks it) and
+REM Inno Setup 6 (https://jrsoftware.org/isdl.php)
 
 REM Run from the port's root regardless of where this script is invoked from.
 cd /d "%~dp0\.."
@@ -16,25 +16,18 @@ cd /d "%~dp0\.."
 REM ===============================================
 REM  Setup the correct python environment
 REM ===============================================
-REM Two locations are accepted: python\.venv, which python\README.md describes,
-REM and a shared .venv at the repository root, which is convenient when working
-REM on more than one port at a time.
-set "VENV="
-if exist ".venv\Scripts\activate.bat"    set "VENV=.venv"
-if not defined VENV if exist "..\.venv\Scripts\activate.bat" set "VENV=..\.venv"
-
-if not defined VENV (
-    echo No virtual environment at python\.venv or ..\.venv
-    echo Create one, then: pip install -e ".[packaging]"
+REM The venv is yours to activate - from the shell, or by opening
+REM marklens-ports in VS Code, which activates it in new terminals. Nothing
+REM here goes looking for one: a script that picks its own interpreter can pick
+REM a different one from the one you have been installing into.
+REM python\packaging\setup is what checks it.
+if not defined VIRTUAL_ENV (
+    echo No virtual environment is active.
+    echo Activate it, then run this again:
+    echo     .venv\Scripts\activate       from the repository root
     exit /b 1
 )
-
-echo Activating virtual environment %VENV%
-call "%VENV%\Scripts\activate.bat"
-if errorlevel 1 (
-    echo Activating virtual environment failed
-    exit /b 1
-)
+echo Using %VIRTUAL_ENV%
 
 echo Running build for %PROCESSOR_ARCHITECTURE% architecture
 

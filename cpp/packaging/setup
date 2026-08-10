@@ -43,8 +43,18 @@ advice=""
 
 ok()   { printf '  %-8s %s\n' "ok" "$1"; }
 bad()  { printf '  %-8s %s\n' "MISSING" "$1"; missing=$((missing + 1)); }
+# Absent but not fatal: wanted by build_<platform>, not by building or running.
+note() { printf '  %-8s %s\n' "--" "$1"; }
 howto() { advice="$advice
 $1"; }
+
+# Name scripts for the platform this is running on, rather than listing all
+# three and leaving the reader to pick.
+case "$(uname -s)" in
+    Darwin) plat=mac ;;
+    Linux)  plat=linux ;;
+    *)      plat=win ;;
+esac
 
 echo
 echo "Marklens C++ - build environment"
@@ -181,6 +191,66 @@ else
 fi
 
 #===============================================
+# Packaging tools - reported, never required
+#===============================================
+# build_<platform> needs one or two things that building and running do not, so
+# they are listed rather than demanded: a missing one is only a problem at the
+# moment you package, and the build script says so again then.
+echo
+echo "Packaging (only needed for build_$plat)"
+
+case "$(uname -s)" in
+    Darwin)
+        # macdeployqt ships with Qt, so only the image tool is worth checking.
+        if command -v create-dmg >/dev/null 2>&1; then
+            ok "create-dmg"
+        else
+            note "create-dmg - needed for a .dmg:  brew install create-dmg"
+        fi
+        ;;
+    Linux)
+        # Windows and macOS get their deploy tool from Qt itself - windeployqt
+        # and macdeployqt sit in the kit's bin/ and need no installing, which is
+        # why neither is checked here. Qt ships no linuxdeployqt, so Linux uses
+        # linuxdeploy, a separate project, plus a separate Qt plugin for it.
+        # linuxdeploy is what gathers the Qt plugins, and QtWebEngine's helper
+        # process and Chromium resources with them; appimagetool alone cannot.
+        arch=$(uname -m)
+        for tool in linuxdeploy linuxdeploy-plugin-qt; do
+            var=$(echo "$tool" | tr 'a-z-' 'A-Z_')
+            eval "configured=\${$var:-}"
+            found=""
+            # $VAR, then PATH, then ~/bin - the order build_linux uses.
+            if [ -n "$configured" ] && [ -x "$configured" ]; then
+                found="$configured"
+            elif command -v "$tool" >/dev/null 2>&1; then
+                found=$(command -v "$tool")
+            elif [ -x "$HOME/bin/$tool" ]; then
+                found="$HOME/bin/$tool"
+            fi
+            if [ -n "$found" ]; then
+                ok "$tool ($found)"
+            else
+                # The release asset has an architecture suffix and no execute
+                # bit; both scripts look for the bare name, and linuxdeploy
+                # finds the plugin by that name on PATH. So: rename and chmod.
+                note "$tool - needed for the AppImage (or set \$$var):
+             mkdir -p ~/bin
+             curl -Lo ~/bin/$tool https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-$arch.AppImage
+             chmod +x ~/bin/$tool"
+            fi
+        done
+        ;;
+    *)
+        if [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            ok "Inno Setup 6"
+        else
+            note "Inno Setup 6 - needed for the installer:  https://jrsoftware.org/isdl.php"
+        fi
+        ;;
+esac
+
+#===============================================
 # Dependencies - built here
 #===============================================
 echo
@@ -212,14 +282,6 @@ fi
 #===============================================
 # Verdict
 #===============================================
-# Name the scripts for the platform this just ran on, rather than listing all
-# three and leaving the reader to pick.
-case "$(uname -s)" in
-    Darwin) plat=mac ;;
-    Linux)  plat=linux ;;
-    *)      plat=win ;;
-esac
-
 echo
 if [ "$missing" -gt 0 ]; then
     echo "$missing thing(s) still needed:"

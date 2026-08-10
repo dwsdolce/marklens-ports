@@ -1,0 +1,232 @@
+#!/bin/bash
+#
+# Check the Python port's build environment, and install what pyproject.toml
+# describes into it.
+#
+#   python/packaging/setup            # check, and install what it can
+#   python/packaging/setup --check    # report only, change nothing
+#
+# pyproject.toml is this port's manifest and covers every library dependency,
+# which is why there is far less here than for the C++ port. What a manifest
+# cannot cover is the environment around it, and that is what this is for:
+#
+#   Prerequisites  An activated virtual environment, at the repository root,
+#                  running a Python new enough for requires-python. Creating
+#                  and activating it are yours to do - VS Code does both if you
+#                  open marklens-ports as the workspace folder. This script
+#                  does neither. It is the only script that even looks: the
+#                  build and run scripts use the interpreter they are given, so
+#                  the venv you activate is the venv everything uses, and there
+#                  is no second one for them to disagree about.
+#
+#   Dependencies   `pip install -e ".[dev]"` into it. pyproject.toml says what
+#                  goes in; something still has to run pip. The dev extra
+#                  rather than packaging: this sets up for working on the port,
+#                  and dev carries the test and lint tools as well as
+#                  PyInstaller.
+#
+#   Packaging      appimagetool, create-dmg or Inno Setup, depending on the
+#                  platform. Downloaded binaries no manifest can express.
+#                  Reported, never required: they matter only when you package.
+
+cd "$(dirname "$0")/.."
+
+CHECK_ONLY=0
+if [ "$1" = "--check" ]; then
+    CHECK_ONLY=1
+elif [ -n "$1" ]; then
+    echo "usage: setup [--check]"
+    exit 1
+fi
+
+# Name scripts for the platform this is running on, rather than listing all
+# three and leaving the reader to pick.
+case "$(uname -s)" in
+    Darwin) plat=mac ;;
+    Linux)  plat=linux ;;
+    *)      plat=win ;;
+esac
+
+# Windows puts the venv's interpreter in Scripts/ rather than bin/.
+if [ "$plat" = "win" ]; then
+    VENV_BIN=Scripts
+else
+    VENV_BIN=bin
+fi
+
+missing=0
+advice=""
+
+ok()   { printf '  %-8s %s\n' "ok" "$1"; }
+bad()  { printf '  %-8s %s\n' "MISSING" "$1"; missing=$((missing + 1)); }
+# Absent but not fatal: wanted by build_<platform>, not by building or running.
+note() { printf '  %-8s %s\n' "--" "$1"; }
+# Not asked, because an earlier failure makes the answer meaningless. Counting
+# these as failures turns one root cause into "3 thing(s) still needed", and
+# sends the reader looking for three problems.
+skip() { printf '  %-8s %s\n' "SKIPPED" "$1"; }
+howto() { advice="$advice
+$1"; }
+
+echo
+echo "Marklens Python - build environment"
+echo
+echo "Prerequisites (yours to set up)"
+
+#===============================================
+# One environment, at the repository root
+#===============================================
+# One venv for the whole project rather than one per port. Two is not merely
+# wasteful: the moment they both exist, one of them gets installed into and the
+# other gets run, and the difference shows up as an import error somewhere
+# unrelated. python/.venv is the one that appears by accident - VS Code opened
+# on python/ instead of on marklens-ports - so it is called out by name.
+ROOT=$(cd .. && pwd -P)
+
+if [ -e ".venv" ]; then
+    bad "a second virtual environment exists at python/.venv"
+    howto "  python/.venv  Remove it. The project keeps one environment, at the
+                repository root, so that installing and running cannot
+                end up in different places. If it is the only venv you
+                have, make the root one first and then delete this."
+fi
+
+if [ -z "$VIRTUAL_ENV" ]; then
+    bad "no virtual environment is active"
+    howto "  venv       Create it at the repository root, if it is not there yet.
+             In VS Code: open marklens-ports as the workspace folder, then
+             Command Palette > Python: Create Environment > Venv.
+             By hand, from the repository root:  python -m venv .venv
+             Then activate it:
+                 source .venv/$VENV_BIN/activate
+             VS Code activates it for you in new terminals."
+elif [ "$(cd "$VIRTUAL_ENV" 2>/dev/null && pwd -P)" = "$ROOT/.venv" ]; then
+    ok "virtual environment at the repository root, activated"
+else
+    bad "the active virtual environment is not the project's"
+    howto "  venv       active:    $VIRTUAL_ENV
+             expected:  $ROOT/.venv
+             Deactivate that one and activate the project's, so that what
+             you install and what you run are the same environment."
+fi
+
+#===============================================
+# An interpreter new enough for pyproject.toml
+#===============================================
+# The active venv's python, not a search of PATH: which interpreter the venv
+# was built with is what decides this, and it cannot be changed afterwards -
+# a too-old venv has to be deleted and remade with a newer python.
+if [ -z "$VIRTUAL_ENV" ]; then
+    skip "python 3.12+ - needs an active virtual environment first"
+elif ! command -v python >/dev/null 2>&1; then
+    bad "python - the active environment has no python on PATH"
+else
+    version=$(python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)
+    # 3.12 is what pyproject.toml's requires-python asks for.
+    if python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+        ok "python $version"
+    else
+        bad "python $version is too old"
+        howto "  python     pyproject.toml asks for 3.12 or newer, and a venv keeps the
+             interpreter it was made with. Install a newer python, delete
+             the venv at the repository root, and make it again with that
+             one:  /path/to/python3.12 -m venv .venv
+             https://www.python.org/downloads/  (or your package manager)"
+    fi
+fi
+
+#===============================================
+# Packaging tools - reported, never required
+#===============================================
+# build_<platform> needs one of these; building and running do not. A missing
+# one is only a problem at the moment you package, and the build script says so
+# again then.
+echo
+echo "Packaging (only needed for build_$plat)"
+
+case "$plat" in
+    mac)
+        if command -v create-dmg >/dev/null 2>&1; then
+            ok "create-dmg"
+        else
+            note "create-dmg - needed for a .dmg:  brew install create-dmg"
+        fi
+        ;;
+    linux)
+        # PyInstaller has already gathered everything by this point, so unlike
+        # the C++ port this needs appimagetool alone, not linuxdeploy.
+        found=""
+        if [ -n "${APPIMAGETOOL:-}" ] && [ -x "${APPIMAGETOOL:-}" ]; then
+            found="$APPIMAGETOOL"
+        elif command -v appimagetool >/dev/null 2>&1; then
+            found=$(command -v appimagetool)
+        elif [ -x "$HOME/bin/appimagetool" ]; then
+            found="$HOME/bin/appimagetool"
+        fi
+        if [ -n "$found" ]; then
+            ok "appimagetool ($found)"
+        else
+            # The release asset has an architecture suffix and no execute bit,
+            # and build_linux looks for the bare name: rename and chmod.
+            note "appimagetool - needed for the AppImage (or set \$APPIMAGETOOL):
+             mkdir -p ~/bin
+             curl -Lo ~/bin/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage
+             chmod +x ~/bin/appimagetool"
+        fi
+        ;;
+    *)
+        if [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            ok "Inno Setup 6"
+        else
+            note "Inno Setup 6 - needed for the installer:  https://jrsoftware.org/isdl.php"
+        fi
+        ;;
+esac
+
+#===============================================
+# What pyproject.toml puts in the venv
+#===============================================
+echo
+echo "Dependencies (this script installs these)"
+
+if [ -z "$VIRTUAL_ENV" ]; then
+    skip "marklens - needs an active virtual environment first"
+else
+    # Installed, and with the dev extra? pyinstaller and pytest are what that
+    # extra adds, so importing them is the cheapest way to ask.
+    if python -c 'import marklens, PyInstaller, pytest' >/dev/null 2>&1; then
+        ok "marklens installed with the dev extra"
+    elif [ "$CHECK_ONLY" -eq 1 ]; then
+        bad "marklens - re-run without --check to install it"
+    else
+        echo "  ....     pip install -e \".[dev]\" ..."
+        if python -m pip install -q -e ".[dev]" >/dev/null 2>&1 &&
+           python -c 'import marklens, PyInstaller, pytest' >/dev/null 2>&1; then
+            ok "marklens installed with the dev extra"
+        else
+            bad "marklens - the install failed"
+            howto "  install    python -m pip install -e \".[dev]\""
+        fi
+    fi
+fi
+
+#===============================================
+# Verdict
+#===============================================
+echo
+if [ "$missing" -gt 0 ]; then
+    echo "$missing thing(s) still needed:"
+    echo "$advice"
+    echo
+    echo "Sort them out and re-run this script."
+    exit 1
+fi
+
+echo "Ready. Run it with:"
+echo "    packaging/run_$plat ../shared/spec/sample/index.md"
+echo
+echo "That runs the working tree; there is no build step."
+echo "Test with:"
+echo "    PYTHONPATH=tests python -m pytest tests -q"
+echo "Package with:"
+echo "    packaging/build_$plat"
