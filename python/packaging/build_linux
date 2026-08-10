@@ -11,10 +11,9 @@
 #   python/dist/marklens-py/                              the PyInstaller bundle
 #   python/dist/Marklens-Python-<version>-<arch>.AppImage
 #
-# Requires the project venv to be active (packaging/setup checks it) and
-# appimagetool, found at $APPIMAGETOOL, on PATH, or at ~/bin - see
-# https://github.com/AppImage/appimagetool/releases, or run packaging/setup,
-# which prints the curl and chmod for you.
+# Requires the project venv to be active and appimagetool. packaging/setup
+# checks the first and downloads the second into packaging/tools/ at the
+# repository root; set APPIMAGETOOL to use a copy of your own instead.
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
@@ -117,26 +116,26 @@ chmod +x "$APPDIR/AppRun"
 #===============================================
 # Build the AppImage
 #===============================================
-# $APPIMAGETOOL first, then PATH, then ~/bin - the same three places, in the
-# same order, that packaging/setup looks in, so a tool setup reported as "ok"
-# is a tool this script can find.
+# $APPIMAGETOOL first, then PATH, then ~/bin, then packaging/tools at the
+# repository root - the same four places, in the same order, that
+# packaging/setup looks in, so a tool setup reported as "ok" is a tool this
+# script can find. packaging/tools is where setup puts it when it downloads it
+# itself; a copy at ~/bin still wins.
 if [ -z "$APPIMAGETOOL" ]; then
     if command -v appimagetool >/dev/null 2>&1; then
         APPIMAGETOOL=$(command -v appimagetool)
-    else
+    elif [ -x "$HOME/bin/appimagetool" ]; then
         APPIMAGETOOL="$HOME/bin/appimagetool"
+    else
+        APPIMAGETOOL="$(cd .. && pwd -P)/packaging/tools/appimagetool"
     fi
 fi
 if [ ! -x "$APPIMAGETOOL" ]; then
-    # The release asset carries an architecture suffix; this looks for the bare
-    # name, so the download has to be renamed as well as made executable.
-    echo "appimagetool not found at $APPIMAGETOOL (looked at \$APPIMAGETOOL, on PATH, then ~/bin)"
+    echo "appimagetool not found at $APPIMAGETOOL"
+    echo "Looked at \$APPIMAGETOOL, on PATH, in ~/bin, then packaging/tools/."
     echo
-    echo "  mkdir -p ~/bin"
-    echo "  curl -Lo ~/bin/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
-    echo "  chmod +x ~/bin/appimagetool"
-    echo
-    echo "or set APPIMAGETOOL=/path/to/appimagetool"
+    echo "Run packaging/setup - it downloads it into packaging/tools/."
+    echo "Or set APPIMAGETOOL=/path/to/appimagetool to use a copy of your own."
     exit 1
 fi
 

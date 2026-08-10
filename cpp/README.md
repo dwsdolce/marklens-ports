@@ -135,25 +135,26 @@ build this port you already have the tool that deploys it — which is why
 
 Linux is the odd one out because **Qt ships no `linuxdeployqt`**. `linuxdeploy`
 is a third-party tool, and Qt awareness is a *plugin* for it — hence two files,
-not one. Both are AppImages from GitHub, and both must be renamed: the release
-assets carry an architecture suffix, while `build_linux` looks for the bare
-names and `linuxdeploy` locates the plugin by searching `PATH` for exactly
-`linuxdeploy-plugin-qt`.
+not one.
 
-```bash
-mkdir -p ~/bin
-arch=$(uname -m)
-curl -Lo ~/bin/linuxdeploy \
-  https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage
-curl -Lo ~/bin/linuxdeploy-plugin-qt \
-  https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
-chmod +x ~/bin/linuxdeploy ~/bin/linuxdeploy-plugin-qt
-```
+**`packaging/setup` downloads both for you**, into `packaging/tools/` at the
+repository root. They are single-file AppImages behind a plain HTTPS download —
+no account, no root, no installer — which puts them in the same class as md4c,
+and the same rule applies: anything installable without your say-so goes into
+the checkout, gitignored, and disappears when the checkout does. There is
+nothing to do by hand.
 
-`packaging/setup` checks for both and prints these commands if either is
-missing; `build_linux` looks in `$LINUXDEPLOY` / `$LINUXDEPLOY_PLUGIN_QT`, then
-`PATH`, then `~/bin`, and prints them too. Running an AppImage needs FUSE — on
-Ubuntu 22.04 and later, `sudo apt install libfuse2`.
+That also settles two things that otherwise bite. The release assets carry an
+architecture suffix, and `setup` saves them under the bare names — which is
+what `build_linux` looks for, and what `linuxdeploy` itself looks for when it
+searches `PATH` for its Qt plugin. And `packaging/tools/` is inside the project,
+so it works whether or not `~/bin` is on your `PATH`, which by default it is not
+on a good many distributions.
+
+`build_linux` looks in `$LINUXDEPLOY` / `$LINUXDEPLOY_PLUGIN_QT`, then `PATH`,
+then `~/bin`, then `packaging/tools/` — so a copy you installed yourself still
+wins, and nothing is downloaded on top of it. Running an AppImage needs FUSE —
+on Ubuntu 22.04 and later, `sudo apt install libfuse2`.
 
 The installer format on top is separate again: Windows needs
 [Inno Setup 6](https://jrsoftware.org/isdl.php), macOS needs `create-dmg`

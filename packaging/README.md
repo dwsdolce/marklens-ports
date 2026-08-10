@@ -170,18 +170,11 @@ you activate is the venv they use; `python/packaging/setup` is the only thing
 that checks, and it treats a second venv at `python/.venv` as an error.
 PyInstaller collects PySide6 wholesale, QtWebEngine included — which is why
 this port needs no Qt deploy tool at all. Windows also needs
-[Inno Setup 6](https://jrsoftware.org/isdl.php); macOS needs `create-dmg`
-(`brew install create-dmg`); Linux needs `appimagetool`:
-
-```bash
-mkdir -p ~/bin
-curl -Lo ~/bin/appimagetool \
-  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage
-chmod +x ~/bin/appimagetool
-```
-
-`python/packaging/setup` checks for it and prints exactly that; `build_linux`
-takes `$APPIMAGETOOL`, then `PATH`, then `~/bin`.
+[Inno Setup 6](https://jrsoftware.org/isdl.php) and macOS `create-dmg`
+(`brew install create-dmg`) — neither of which `setup` can install for you, so
+both are reported rather than fetched. Linux needs `appimagetool`, which `setup`
+*does* download, into `packaging/tools/` at the repository root; `build_linux`
+takes `$APPIMAGETOOL`, then `PATH`, then `~/bin`, then `packaging/tools/`.
 
 **C++** — CMake, Qt 6 with WebEngineWidgets, md4c, and Python 3. Set
 `CMAKE_PREFIX_PATH` to the Qt installation (semicolon-separated if md4c lives
@@ -239,29 +232,32 @@ at; `build_win` tries each `CMAKE_PREFIX_PATH` root after that. A Qt good enough
 to build the port already carries the tool that deploys it.
 
 Qt ships no `linuxdeployqt`. `linuxdeploy` is a third-party tool and Qt support
-is a *plugin* for it, so Linux needs two files, both AppImages, and both must be
-renamed — the release assets carry an architecture suffix, `build_linux` looks
-for the bare names, and `linuxdeploy` finds the plugin by searching `PATH` for
-exactly `linuxdeploy-plugin-qt`:
+is a *plugin* for it, so Linux needs two files rather than one — and **`setup`
+downloads both**, into `packaging/tools/` at the repository root. Nothing to do
+by hand.
 
-```bash
-mkdir -p ~/bin
-arch=$(uname -m)
-curl -Lo ~/bin/linuxdeploy \
-  https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage
-curl -Lo ~/bin/linuxdeploy-plugin-qt \
-  https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
-chmod +x ~/bin/linuxdeploy ~/bin/linuxdeploy-plugin-qt
-```
+This is the same rule md4c follows: a dependency that installs without an
+account, without root and without an interactive installer belongs inside the
+checkout, gitignored, gone when the checkout goes. `setup` saves them under the
+bare names — the release assets carry an architecture suffix, and the bare name
+is what `build_linux` looks for and what `linuxdeploy` searches `PATH` for when
+it loads its Qt plugin. Being inside the project also means it does not matter
+whether `~/bin` is on your `PATH`, which by default it is not on many
+distributions.
 
-`cpp/packaging/setup` prints exactly these commands when either is missing, and
-`build_linux` takes `$LINUXDEPLOY` / `$LINUXDEPLOY_PLUGIN_QT`, then `PATH`, then
-`~/bin`. Running an AppImage needs FUSE — on Ubuntu 22.04 and later,
-`sudo apt install libfuse2`.
+The lookup order in both `setup` and `build_linux` is `$LINUXDEPLOY` /
+`$LINUXDEPLOY_PLUGIN_QT`, then `PATH`, then `~/bin`, then `packaging/tools/`, so
+a copy you installed yourself wins and is never downloaded over. `--check`
+reports without downloading. Running an AppImage needs FUSE — on Ubuntu 22.04
+and later, `sudo apt install libfuse2`.
 
-No separate `appimagetool` is needed for the C++ port: `linuxdeploy --output
+The versions are upstream's rolling `continuous` builds, as md4c is cloned from
+its default branch: nothing here pins a release.
+
+No separate `appimagetool` is needed for the C++ port — `linuxdeploy --output
 appimage` produces the AppImage. The Python port does need it, because it has no
-linuxdeploy step to hide it behind.
+linuxdeploy step to hide it behind, and `python/packaging/setup` fetches it the
+same way into the same place.
 
 ## Signing
 

@@ -12,13 +12,9 @@
 #   cpp/dist/Marklens-Cpp-<version>-<arch>.AppImage
 #
 # Requires CMake, Qt 6 with WebEngineWidgets, md4c, Python 3, and linuxdeploy
-# with its Qt plugin:
-#
-#   https://github.com/linuxdeploy/linuxdeploy/releases
-#   https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases
-#
-# Both are expected at ~/bin (chmod +x them) or wherever LINUXDEPLOY and
-# LINUXDEPLOY_PLUGIN_QT point. linuxdeploy is used rather than appimagetool
+# with its Qt plugin - packaging/setup downloads both into packaging/tools/ at
+# the repository root, or set LINUXDEPLOY and LINUXDEPLOY_PLUGIN_QT to copies of
+# your own. linuxdeploy is used rather than appimagetool
 # directly because a Qt application needs its plugins, and QtWebEngine needs
 # QtWebEngineProcess plus the Chromium resources, gathered first - which is
 # exactly what the Qt plugin does. The Python port skips this because
@@ -133,17 +129,24 @@ chmod +x "$APPDIR/AppRun"
 #===============================================
 # Build the AppImage
 #===============================================
-# The configured path first, then PATH, then ~/bin - the same three places, in
-# the same order, that packaging/setup looks in. They used to disagree: setup
-# accepted a linuxdeploy on PATH and this script only ever looked at ~/bin, so
-# setup could report "ok" for a tool the build then failed to find.
+# The configured path first, then PATH, then ~/bin, then packaging/tools at the
+# repository root - the same four places, in the same order, that
+# packaging/setup looks in. They used to disagree: setup accepted a linuxdeploy
+# on PATH and this script only ever looked at ~/bin, so setup could report "ok"
+# for a tool the build then failed to find.
+#
+# packaging/tools is where setup puts them when it downloads them itself; a copy
+# you installed at ~/bin still wins, so nothing gets used twice over.
+TOOLS_DIR="$(cd .. && pwd -P)/packaging/tools"
 find_tool() {
     if [ -n "$2" ]; then
         echo "$2"
     elif command -v "$1" >/dev/null 2>&1; then
         command -v "$1"
-    else
+    elif [ -x "$HOME/bin/$1" ]; then
         echo "$HOME/bin/$1"
+    else
+        echo "$TOOLS_DIR/$1"
     fi
 }
 LINUXDEPLOY=$(find_tool linuxdeploy "$LINUXDEPLOY")
@@ -153,25 +156,23 @@ LINUXDEPLOY_PLUGIN_QT=$(find_tool linuxdeploy-plugin-qt "$LINUXDEPLOY_PLUGIN_QT"
 # script looks for the bare names, and linuxdeploy itself finds the plugin by
 # looking for "linuxdeploy-plugin-qt" on PATH. The release assets are named
 # with an architecture suffix, so an unrenamed download is never found.
-arch=$(uname -m)
 if [ ! -x "$LINUXDEPLOY" ]; then
-    echo "linuxdeploy not found at $LINUXDEPLOY (looked at \$LINUXDEPLOY, on PATH, then ~/bin)"
+    echo "linuxdeploy not found at $LINUXDEPLOY"
+    echo "Looked at \$LINUXDEPLOY, on PATH, in ~/bin, then packaging/tools/."
     echo
-    echo "  mkdir -p ~/bin"
-    echo "  curl -Lo ~/bin/linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage"
-    echo "  chmod +x ~/bin/linuxdeploy"
-    echo
-    echo "or set LINUXDEPLOY=/path/to/linuxdeploy"
+    echo "Run packaging/setup - it downloads both into packaging/tools/."
+    echo "Or set LINUXDEPLOY=/path/to/linuxdeploy to use a copy of your own."
     exit 1
 fi
 if [ ! -x "$LINUXDEPLOY_PLUGIN_QT" ]; then
-    echo "linuxdeploy-plugin-qt not found at $LINUXDEPLOY_PLUGIN_QT (looked at \$LINUXDEPLOY_PLUGIN_QT, on PATH, then ~/bin)"
-    echo
-    echo "  curl -Lo ~/bin/linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage"
-    echo "  chmod +x ~/bin/linuxdeploy-plugin-qt"
+    echo "linuxdeploy-plugin-qt not found at $LINUXDEPLOY_PLUGIN_QT"
+    echo "Looked at \$LINUXDEPLOY_PLUGIN_QT, on PATH, in ~/bin, then packaging/tools/."
     echo
     echo "Qt ships no linuxdeployqt; Qt support for linuxdeploy is this separate"
-    echo "plugin. Or set LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt"
+    echo "plugin, which is why there are two files rather than one."
+    echo
+    echo "Run packaging/setup - it downloads both into packaging/tools/."
+    echo "Or set LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt."
     exit 1
 fi
 

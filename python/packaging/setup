@@ -68,6 +68,47 @@ skip() { printf '  %-8s %s\n' "SKIPPED" "$1"; }
 howto() { advice="$advice
 $1"; }
 
+#===============================================
+# Finding and fetching the AppImage tool
+#===============================================
+# packaging/tools/ at the repository root, shared with the C++ port. Inside the
+# checkout, so it is gitignored, goes when the checkout goes, and is findable
+# without ~/bin being on PATH - which it is not, by default, on a good many
+# distributions.
+REPO_ROOT=$(cd .. && pwd -P)
+TOOLS_DIR="$REPO_ROOT/packaging/tools"
+
+# $VAR, then PATH, then ~/bin, then packaging/tools - the order build_linux
+# uses, so a tool reported here is a tool the build finds. An existing ~/bin
+# copy still wins, and nothing is downloaded on top of it.
+find_tool() {
+    if [ -n "$2" ] && [ -x "$2" ]; then
+        echo "$2"
+    elif command -v "$1" >/dev/null 2>&1; then
+        command -v "$1"
+    elif [ -x "$HOME/bin/$1" ]; then
+        echo "$HOME/bin/$1"
+    elif [ -x "$TOOLS_DIR/$1" ]; then
+        echo "$TOOLS_DIR/$1"
+    fi
+}
+
+# Downloaded to .part and moved into place only once complete, so an interrupted
+# download cannot leave a truncated file behind that looks installed.
+fetch_tool() {
+    url=$1
+    dest=$2
+    mkdir -p "$(dirname "$dest")" || return 1
+    if command -v curl >/dev/null 2>&1; then
+        curl -fLsS -o "$dest.part" "$url" || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$dest.part" "$url" || return 1
+    else
+        return 127
+    fi
+    chmod +x "$dest.part" && mv "$dest.part" "$dest"
+}
+
 echo
 echo "Marklens Python - build environment"
 echo
@@ -138,9 +179,12 @@ fi
 #===============================================
 # Packaging tools - reported, never required
 #===============================================
-# build_<platform> needs one of these; building and running do not. A missing
-# one is only a problem at the moment you package, and the build script says so
-# again then.
+# What is left here is what this script cannot install: create-dmg wants
+# Homebrew, Inno Setup is a Windows installer to click through. Both matter only
+# at the moment you package, so they are listed rather than demanded. Linux is
+# absent because appimagetool is a plain download this script fetches itself -
+# see Dependencies below.
+if [ "$plat" != "linux" ]; then
 echo
 echo "Packaging (only needed for build_$plat)"
 
@@ -152,28 +196,6 @@ case "$plat" in
             note "create-dmg - needed for a .dmg:  brew install create-dmg"
         fi
         ;;
-    linux)
-        # PyInstaller has already gathered everything by this point, so unlike
-        # the C++ port this needs appimagetool alone, not linuxdeploy.
-        found=""
-        if [ -n "${APPIMAGETOOL:-}" ] && [ -x "${APPIMAGETOOL:-}" ]; then
-            found="$APPIMAGETOOL"
-        elif command -v appimagetool >/dev/null 2>&1; then
-            found=$(command -v appimagetool)
-        elif [ -x "$HOME/bin/appimagetool" ]; then
-            found="$HOME/bin/appimagetool"
-        fi
-        if [ -n "$found" ]; then
-            ok "appimagetool ($found)"
-        else
-            # The release asset has an architecture suffix and no execute bit,
-            # and build_linux looks for the bare name: rename and chmod.
-            note "appimagetool - needed for the AppImage (or set \$APPIMAGETOOL):
-             mkdir -p ~/bin
-             curl -Lo ~/bin/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage
-             chmod +x ~/bin/appimagetool"
-        fi
-        ;;
     *)
         if [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
             ok "Inno Setup 6"
@@ -182,6 +204,7 @@ case "$plat" in
         fi
         ;;
 esac
+fi
 
 #===============================================
 # What pyproject.toml puts in the venv
@@ -207,6 +230,47 @@ else
             bad "marklens - the install failed"
             howto "  install    python -m pip install -e \".[dev]\""
         fi
+    fi
+fi
+
+#===============================================
+# The AppImage tool - fetched, not demanded
+#===============================================
+# Linux only, and only appimagetool: PyInstaller has already collected PySide6
+# and everything under it, so unlike the C++ port there is no Qt to deploy and
+# no linuxdeploy step. A single-file AppImage behind a plain HTTPS download -
+# no account, no root, no installer - so this script fetches it rather than
+# printing a command for you to paste.
+#
+# The release asset carries an architecture suffix; it is saved under the bare
+# name, which is what build_linux looks for.
+if [ "$plat" = "linux" ]; then
+    found=$(find_tool appimagetool "${APPIMAGETOOL:-}")
+    if [ -n "$found" ]; then
+        ok "appimagetool ($found)"
+    elif [ "$CHECK_ONLY" -eq 1 ]; then
+        bad "appimagetool - re-run without --check to download it"
+    else
+        echo "  ....     downloading appimagetool into packaging/tools/ ..."
+        url="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
+        fetch_tool "$url" "$TOOLS_DIR/appimagetool"
+        case $? in
+            0) ok "appimagetool ($TOOLS_DIR/appimagetool)" ;;
+            127)
+                bad "appimagetool - needs curl or wget to download it"
+                howto "  appimagetool
+             Install curl, or download it yourself:
+             $url
+             Save it as packaging/tools/appimagetool and chmod +x."
+                ;;
+            *)
+                bad "appimagetool - the download failed"
+                howto "  appimagetool
+             $url
+             Save it as packaging/tools/appimagetool and chmod +x,
+             or set \$APPIMAGETOOL to a copy you already have."
+                ;;
+        esac
     fi
 fi
 
