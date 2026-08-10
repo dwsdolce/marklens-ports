@@ -212,6 +212,14 @@ fi
 #===============================================
 # Verdict
 #===============================================
+# Name the scripts for the platform this just ran on, rather than listing all
+# three and leaving the reader to pick.
+case "$(uname -s)" in
+    Darwin) plat=mac ;;
+    Linux)  plat=linux ;;
+    *)      plat=win ;;
+esac
+
 echo
 if [ "$missing" -gt 0 ]; then
     echo "$missing thing(s) still needed:"
@@ -221,8 +229,11 @@ if [ "$missing" -gt 0 ]; then
     exit 1
 fi
 
-echo "Ready. Build and test with:"
-echo "    cmake -B build && cmake --build build --config Release"
-echo "    ctest --test-dir build --output-on-failure -C Release"
-echo "or package with:"
-echo "    packaging/build_win     (or build_mac, build_linux)"
+echo "Ready. Run it with:"
+echo "    packaging/run_$plat ../shared/spec/sample/index.md"
+echo
+echo "That builds first if it needs to, and is the tool for iterating."
+echo "Test with:"
+echo "    cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure"
+echo "Package with:"
+echo "    packaging/build_$plat"

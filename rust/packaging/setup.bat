@@ -117,10 +117,13 @@ if %MISSING% GTR 0 (
     exit /b 1
 )
 
-echo Ready. Run or test with:
-echo     cd src-tauri ^&^& cargo run -- ../../shared/spec/sample/index.md
+echo Ready. Run it with:
+echo     packaging\run_win.bat ..\shared\spec\sample\index.md
+echo.
+echo That builds first if it needs to, and is the tool for iterating.
+echo Test with:
 echo     cd src-tauri ^&^& cargo test
-echo or package with:
+echo Package with:
 echo     packaging\build_win.bat
 exit /b 0
 
