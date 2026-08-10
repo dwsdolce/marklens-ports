@@ -7,9 +7,10 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::menu::{
-    AboutMetadataBuilder, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder,
+    AboutMetadataBuilder, CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder,
+    PredefinedMenuItem, Submenu, SubmenuBuilder,
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -19,6 +20,13 @@ struct AppState {
     watcher: Mutex<Option<RecommendedWatcher>>,
     auto_reload: Mutex<bool>,
     zoom: Mutex<f64>,
+    // Handles to the two menu pieces that change while the app runs, so each
+    // can be updated on its own. Rebuilding the whole menu to change either is
+    // what produced a burst of GTK accelerator warnings on every open; see
+    // refresh_recent. Both are Arc-backed, so these are cheap clones of the
+    // live items rather than copies.
+    recent_menu: Mutex<Option<Submenu<Wry>>>,
+    auto_reload_item: Mutex<Option<CheckMenuItem<Wry>>>,
 }
 
 #[derive(Serialize)]
@@ -44,7 +52,7 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
 
     *state.current.lock().unwrap() = Some(path.clone());
     add_recent(&app, &path);
-    let _ = build_menu(&app); // refresh Open Recent
+    refresh_recent(&app);
 
     // The frontend sets document.title, which a Tauri webview does not
     // propagate to the native window - so without this the title bar stays at
@@ -159,8 +167,42 @@ fn reveal_label() -> &'static str {
     }
 }
 
-fn build_menu(app: &AppHandle) -> tauri::Result<()> {
+/// Replace the contents of the Open Recent submenu from the stored list.
+///
+/// Split out of build_menu so the list can be refreshed without rebuilding the
+/// menu bar around it. GTK warns - once per accelerator, so nine lines a time -
+/// when a menu item carrying an accelerator is torn down, and rebuilding the
+/// whole bar tore down every one of them. Nothing in here has an accelerator,
+/// so swapping these items is silent.
+fn fill_recent(app: &AppHandle, menu: &Submenu<Wry>) -> tauri::Result<()> {
+    while menu.remove_at(0)?.is_some() {}
+
     let recent = load_recent(app);
+    if recent.is_empty() {
+        menu.append(
+            &MenuItemBuilder::with_id("recent_none", "No Recent Documents")
+                .enabled(false)
+                .build(app)?,
+        )?;
+    } else {
+        for p in &recent {
+            menu.append(&MenuItemBuilder::with_id(format!("recent:{p}"), filename(p)).build(app)?)?;
+        }
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&MenuItemBuilder::with_id("recent_clear", "Clear Menu").build(app)?)?;
+    }
+    Ok(())
+}
+
+/// Refresh Open Recent in place, if the menu has been built yet.
+fn refresh_recent(app: &AppHandle) {
+    let menu = app.state::<AppState>().recent_menu.lock().unwrap().clone();
+    if let Some(menu) = menu {
+        let _ = fill_recent(app, &menu);
+    }
+}
+
+fn build_menu(app: &AppHandle) -> tauri::Result<()> {
     let auto = *app.state::<AppState>().auto_reload.lock().unwrap();
 
     // MARKLENS_VERSION comes from build.rs; see there for why it is not the
@@ -191,29 +233,26 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .quit()
         .build()?;
 
-    let mut recent_sub = SubmenuBuilder::new(app, "Open Recent");
-    if recent.is_empty() {
-        recent_sub = recent_sub.item(
-            &MenuItemBuilder::with_id("recent_none", "No Recent Documents")
-                .enabled(false)
-                .build(app)?,
-        );
-    } else {
-        for p in &recent {
-            recent_sub = recent_sub
-                .item(&MenuItemBuilder::with_id(format!("recent:{p}"), filename(p)).build(app)?);
-        }
-        recent_sub = recent_sub
-            .separator()
-            .item(&MenuItemBuilder::with_id("recent_clear", "Clear Menu").build(app)?);
+    // Built empty and filled separately, so that later refreshes go through the
+    // same path as the first one.
+    let recent_menu = SubmenuBuilder::new(app, "Open Recent").build()?;
+    fill_recent(app, &recent_menu)?;
+
+    let auto_item = CheckMenuItemBuilder::with_id("auto_reload", "Auto-Reload on Change")
+        .checked(auto)
+        .build(app)?;
+
+    {
+        let state = app.state::<AppState>();
+        *state.recent_menu.lock().unwrap() = Some(recent_menu.clone());
+        *state.auto_reload_item.lock().unwrap() = Some(auto_item.clone());
     }
-    let recent_menu = recent_sub.build()?;
 
     let file = SubmenuBuilder::new(app, "File")
         .item(&MenuItemBuilder::with_id("open", "Open…").accelerator("CmdOrCtrl+O").build(app)?)
         .item(&recent_menu)
         .item(&MenuItemBuilder::with_id("reload", "Reload").accelerator("CmdOrCtrl+R").build(app)?)
-        .item(&CheckMenuItemBuilder::with_id("auto_reload", "Auto-Reload on Change").checked(auto).build(app)?)
+        .item(&auto_item)
         .separator()
         .item(&MenuItemBuilder::with_id("export_pdf", "Export as PDF…").accelerator("CmdOrCtrl+Shift+E").build(app)?)
         .item(&MenuItemBuilder::with_id("reveal", reveal_label()).build(app)?)
@@ -289,11 +328,17 @@ fn handle_menu(app: &AppHandle, id: &str) {
             let s = app.state::<AppState>();
             let new = !*s.auto_reload.lock().unwrap();
             *s.auto_reload.lock().unwrap() = new;
-            let _ = build_menu(app);
+            // Tick the existing item rather than rebuild the bar to redraw one
+            // checkmark. GTK toggles it itself on click, so this is also what
+            // keeps the tick honest if that ever disagrees with our state.
+            let item = s.auto_reload_item.lock().unwrap().clone();
+            if let Some(item) = item {
+                let _ = item.set_checked(new);
+            }
         }
         "recent_clear" => {
             clear_recent(app);
-            let _ = build_menu(app);
+            refresh_recent(app);
         }
         other if other.starts_with("recent:") => {
             let _ = app.emit("open-file", other.trim_start_matches("recent:").to_string());
@@ -387,6 +432,34 @@ fn filename(path: &str) -> String {
 // ── entry ────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // WebKitGTK 2.42 began compositing through a DMA-BUF buffer shared with the
+    // GPU. Where that handshake fails the web process dies moments after the
+    // first paint, and it dies quietly: the window keeps the frame it already
+    // painted, so the chrome looks perfectly normal, but no script ever runs
+    // and nothing reflows. What that looks like from the outside is a document
+    // area frozen at its opening size with the window resizing around it, and
+    // a file that opens to a blank page - the title bar even updates, because
+    // that is the native side, which is still alive.
+    //
+    // Virtualised GPUs are the common case: this was found on VMware's SVGA II
+    // adapter, and the same fault is reported on VirtualBox and some NVIDIA
+    // setups. Only Linux is affected - Windows is WebView2 and macOS is
+    // WKWebView, so neither goes near this code path, which is why the same
+    // frontend behaves on both.
+    //
+    // Disabling the DMA-BUF path falls back to a shared-memory buffer: a little
+    // more work to composite, and correct everywhere. It has to be set before
+    // GTK or WebKit is touched, because the web process reads it when it starts.
+    //
+    // A value already in the environment is left alone, and WebKit reads this
+    // one by value rather than by presence, so anyone on hardware where the
+    // fast path works can ask for it back with
+    // WEBKIT_DISABLE_DMABUF_RENDERER=0.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let initial = std::env::args().skip(1).find(|a| !a.starts_with('-'));
 
     tauri::Builder::default()
@@ -398,6 +471,8 @@ fn main() {
             watcher: Mutex::new(None),
             auto_reload: Mutex::new(true),
             zoom: Mutex::new(1.0),
+            recent_menu: Mutex::new(None),
+            auto_reload_item: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             initial_document,
