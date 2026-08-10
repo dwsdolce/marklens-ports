@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._view)
 
         self._build_ui()
+        self._render()  # nothing open yet, so this puts up the empty state
 
     # ── menu bar + toolbar ───────────────────────────────────────────────────
 

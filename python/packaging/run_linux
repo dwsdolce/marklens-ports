@@ -22,3 +22,5 @@ done
 echo "No virtual environment at python/.venv or ../.venv"
 echo "Create one, then: pip install -e \".[dev]\""
 exit 1
+
+# touched
