@@ -71,7 +71,12 @@ if command -v cargo >/dev/null 2>&1; then
     minor="$(echo "$cargo_version" | cut -d. -f2)"
     if [ "$major" -gt 1 ] || [ "$minor" -ge 85 ]; then
         if [ "$cargo_off_path" -eq 1 ]; then
-            ok "cargo $cargo_version (found in $(dirname "$(command -v cargo)"))"
+            # Plain variables rather than a nested command substitution: the
+            # latter is the sort of thing that parses differently across shells,
+            # and this file has to run under Git Bash, Cygwin and every Linux sh.
+            cargo_bin=$(command -v cargo)
+            cargo_dir=$(dirname "$cargo_bin")
+            ok "cargo $cargo_version (found in $cargo_dir)"
             echo "           not on this shell's PATH yet - run:  . \"\$HOME/.cargo/env\""
             echo "           or open a new terminal. Only this script is unblocked."
         else
