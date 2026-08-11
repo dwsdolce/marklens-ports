@@ -1,0 +1,101 @@
+#!/bin/bash
+#
+# Stage the licence paperwork for a Linux package into one directory.
+#
+#   packaging/collect_licenses <dest-dir> <package-name> <bundled-description>
+#
+# Writes, into <dest-dir>:
+#
+#   copyright        the project's own LICENSE (MIT)
+#   NOTICE           what third-party code is bundled and under what terms
+#   LGPL-3.0.txt     the text those terms refer to
+#   GPL-3.0.txt      which LGPL-3.0 incorporates by reference
+#
+# Why this exists. linuxdeploy already collects a copyright file for every
+# library it takes from a distribution package - about sixty of them - by
+# asking dpkg-query which package owns each file. That covers glib, nss, cups
+# and the rest, and it is why the build prints a warning for each file no
+# package owns: our own executable, and every Qt library, because a Qt from the
+# online installer is not a distribution package. The warnings are harmless in
+# themselves, but they mark a real hole: Qt is the largest thing either port
+# redistributes, it is used here under LGPL-3.0, and neither package carried a
+# word of that licence.
+#
+# The text is committed under shared/licenses rather than copied off the build
+# machine. Qt's binary installs do not ship it - the Licenses directory beside
+# the kit holds CMake's Apache licence, the FDL for the documentation, and a
+# prose summary of Qt's commercial and open-source options, none of which is
+# the LGPL - and the copies under /usr/share/common-licenses exist only on
+# Debian-derived systems. PySide6's wheels carry no licence file at all, only a
+# License field in their metadata. So a committed copy is the only thing that
+# gives both ports the same answer on any build machine.
+#
+# This does not attempt to be a full LGPL compliance story: conveying the
+# licence and saying what is bundled is the part a build script can do.
+
+set -u
+
+# As in make_linux_package: the directory this creates is copied into the
+# package with its mode intact, and a group-writable one under /usr/share/doc
+# is something both package linters object to.
+umask 022
+
+if [ $# -ne 3 ]; then
+    echo "usage: collect_licenses <dest-dir> <package-name> <bundled-description>" >&2
+    exit 1
+fi
+
+DEST="$1"
+NAME="$2"
+BUNDLED="$3"
+
+HERE="$(cd "$(dirname "$0")" && pwd -P)"
+ROOT="$(cd "$HERE/.." && pwd -P)"
+LICENSES="$ROOT/shared/licenses"
+
+for f in "$ROOT/LICENSE" "$LICENSES/LGPL-3.0.txt" "$LICENSES/GPL-3.0.txt"; do
+    if [ ! -f "$f" ]; then
+        echo "collect_licenses: $f is missing" >&2
+        exit 1
+    fi
+done
+
+mkdir -p "$DEST"
+cp "$ROOT/LICENSE" "$DEST/copyright"
+cp "$LICENSES/LGPL-3.0.txt" "$DEST/LGPL-3.0.txt"
+cp "$LICENSES/GPL-3.0.txt" "$DEST/GPL-3.0.txt"
+
+cat > "$DEST/NOTICE" <<EOF
+$NAME
+==============================================================================
+
+Marklens itself is under the MIT licence, in the file "copyright" beside this
+one.
+
+Bundled third-party code
+------------------------
+
+$BUNDLED
+
+Qt 6 is used here under the GNU Lesser General Public License version 3. The
+full text is in LGPL-3.0.txt beside this file, together with GPL-3.0.txt, which
+LGPL-3.0 incorporates by reference. Marklens links Qt dynamically and does not
+modify it. The corresponding source for the Qt version bundled here is
+published by The Qt Company at https://download.qt.io/; where Qt arrived by way
+of PySide6, that project's sources are at https://pypi.org/project/PySide6/.
+
+Qt states its own terms in its documentation: the Licensing and LGPL pages,
+online at https://doc.qt.io/qt-6/licensing.html and installed locally as
+Docs/Qt-<version>/qtdoc/licensing.html and lgpl.html by the Qt installer. The
+LGPL-3.0.txt here is a plain-text copy committed to the Marklens repository
+rather than one taken from that documentation, because those pages belong to
+Qt's documentation component, which an installation need not have.
+
+Where the packaging tool could identify the distribution package a bundled
+library came from, that package's own copyright file is included under
+share/doc/ beside this one.
+
+Source for Marklens itself: https://github.com/dwsdolce/marklens-ports
+EOF
+
+chmod 644 "$DEST"/copyright "$DEST"/NOTICE "$DEST"/*.txt

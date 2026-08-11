@@ -338,6 +338,21 @@ if [ "$plat" = "linux" ]; then
             esac
         fi
     done
+
+    # The .deb and .rpm tools. Unlike the AppImage tools these cannot be
+    # fetched here - they are system packages, not single-file downloads - and
+    # build_linux still produces the AppImage without them, skipping only the
+    # format whose tool is missing. So they are noted rather than counted.
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        ok "dpkg-deb"
+    else
+        note "dpkg-deb - needed for a .deb:  part of the 'dpkg' package"
+    fi
+    if command -v rpmbuild >/dev/null 2>&1; then
+        ok "rpmbuild"
+    else
+        note "rpmbuild - needed for an .rpm:  apt install rpm, or dnf install rpm-build"
+    fi
 fi
 
 #===============================================

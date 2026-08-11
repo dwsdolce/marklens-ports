@@ -1,15 +1,21 @@
 #!/bin/bash
 #
-# Build the Linux application bundle and an AppImage for the Python port.
+# Build the Linux application bundle and its packages for the Python port.
 #
-#   python/packaging/build_linux            # build and package
-#   python/packaging/build_linux app        # build only, no AppImage
-#   python/packaging/build_linux appimage   # the default, named explicitly
+#   python/packaging/build_linux                  # all three packages
+#   python/packaging/build_linux app              # build only, no packages
+#   python/packaging/build_linux appimage         # one format, named explicitly
+#   python/packaging/build_linux deb,rpm          # or several
 #   python/packaging/build_linux help
 #
 # Produces:
 #   python/dist/marklens-py/                              the PyInstaller bundle
 #   python/dist/Marklens-Python-<version>-<arch>.AppImage
+#   python/dist/Marklens-Python-<version>-<arch>.deb
+#   python/dist/Marklens-Python-<version>-<arch>.rpm
+#
+# The .deb and .rpm install the PyInstaller bundle under /opt - see
+# packaging/make_linux_package, which the C++ port shares.
 #
 # Requires the project venv to be active and appimagetool. packaging/setup
 # checks the first and downloads the second into packaging/tools/ at the
@@ -18,21 +24,29 @@
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
 
-mode="${1:-appimage}"
+usage() {
+    echo "build_linux [app|appimage|deb|rpm]"
+    echo "  app  build only, runnable from dist/ with packaging/run_linux"
+    echo "  the rest are package formats, comma-separated;"
+    echo "  the default is appimage,deb,rpm"
+}
+
+mode="${1:-appimage,deb,rpm}"
 case "$mode" in
-    help)
-        echo "build_linux [app|appimage]"
-        echo "  app  build only, runnable from dist/ with packaging/run_linux"
-        echo "  appimage  the above, plus an AppImage (default)"
-        exit 0
-        ;;
-    app|appimage) ;;
+    help) usage; exit 0 ;;
+    app) ;;
     *)
-        echo "Unknown mode: $mode"
-        echo "build_linux [app|appimage]"
-        exit 1
+        # Validated up front: a typo should not be discovered after PyInstaller
+        # has spent a minute collecting Qt.
+        for fmt in ${mode//,/ }; do
+            case "$fmt" in
+                appimage|deb|rpm) ;;
+                *) echo "Unknown format: $fmt"; usage; exit 1 ;;
+            esac
+        done
         ;;
 esac
+want() { case ",$mode," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 #===============================================
 # Setup the correct python environment
@@ -86,65 +100,124 @@ if [ "$mode" = "app" ]; then
     exit 0
 fi
 
-#===============================================
-# Assemble AppDir
-#===============================================
-APPDIR=dist/AppDir
-rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin" \
-         "$APPDIR/usr/share/applications" \
-         "$APPDIR/usr/share/icons/hicolor/512x512/apps"
-
-# Payload: the PyInstaller bundle directory.
-cp -r dist/marklens-py "$APPDIR/usr/bin/"
-
-# Desktop entry - appimagetool requires it at both the AppDir root and
-# usr/share/applications.
-cp packaging/marklens-py.desktop "$APPDIR/"
-cp packaging/marklens-py.desktop "$APPDIR/usr/share/applications/"
-
-# Icon - at the AppDir root under the name the desktop entry's Icon= field
-# uses, and again in the hicolor theme.
-ICON=../shared/icon-py.png
-cp "$ICON" "$APPDIR/marklens-py.png"
-cp "$ICON" "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-py.png"
-
-# AppRun launcher.
-cp packaging/AppRun "$APPDIR/AppRun"
-chmod +x "$APPDIR/AppRun"
+ARCH=$(uname -m)
 
 #===============================================
-# Build the AppImage
+# Licences
 #===============================================
-# $APPIMAGETOOL first, then PATH, then ~/bin, then packaging/tools at the
-# repository root - the same four places, in the same order, that
-# packaging/setup looks in, so a tool setup reported as "ok" is a tool this
-# script can find. packaging/tools is where setup puts it when it downloads it
-# itself; a copy at ~/bin still wins.
-if [ -z "$APPIMAGETOOL" ]; then
-    if command -v appimagetool >/dev/null 2>&1; then
-        APPIMAGETOOL=$(command -v appimagetool)
-    elif [ -x "$HOME/bin/appimagetool" ]; then
-        APPIMAGETOOL="$HOME/bin/appimagetool"
-    else
-        APPIMAGETOOL="$(cd .. && pwd -P)/packaging/tools/appimagetool"
+# Into the PyInstaller bundle itself, which is both the AppImage's payload and
+# the packages', so one copy reaches all three.
+#
+# PyInstaller collects no licence files - it has no idea which distribution
+# package anything came from, the way linuxdeploy does for the C++ port - and
+# the PySide6 wheels carry no licence text either, only a License field in
+# their metadata. So without this the Python packages shipped Qt with nothing
+# at all, which is the same hole the C++ warnings were pointing at, minus the
+# warnings.
+PYSIDE_VERSION=$(python -c \
+    "from importlib.metadata import version; print(version('PySide6'))" 2>/dev/null)
+../packaging/collect_licenses \
+    "dist/marklens-py/share/doc/marklens-py" \
+    "Marklens (Python/PySide6 port)" \
+    "Qt 6 by way of PySide6${PYSIDE_VERSION:+ }$PYSIDE_VERSION, linked
+dynamically and bundled into this package by PyInstaller, along with the Qt
+plugins and the QtWebEngine resources. QtWebEngine carries its own copy of
+Chromium, which is covered by Qt's licensing. The Python runtime is bundled
+too, under the Python Software Foundation License."
+if [ $? -ne 0 ]; then
+    echo "Collecting the licences failed"
+    exit 1
+fi
+
+#===============================================
+# Assemble AppDir and build the AppImage
+#===============================================
+# Only for the AppImage. The .deb and .rpm are built straight from the
+# PyInstaller bundle below, so when neither an AppImage nor an AppDir is wanted
+# there is no reason to copy the bundle a second time.
+if want appimage; then
+    APPDIR=dist/AppDir
+    rm -rf "$APPDIR"
+    mkdir -p "$APPDIR/usr/bin" \
+             "$APPDIR/usr/share/applications" \
+             "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+
+    # Payload: the PyInstaller bundle directory.
+    cp -r dist/marklens-py "$APPDIR/usr/bin/"
+
+    # Desktop entry - appimagetool requires it at both the AppDir root and
+    # usr/share/applications.
+    cp packaging/marklens-py.desktop "$APPDIR/"
+    cp packaging/marklens-py.desktop "$APPDIR/usr/share/applications/"
+
+    # Icon - at the AppDir root under the name the desktop entry's Icon= field
+    # uses, and again in the hicolor theme.
+    ICON=../shared/icon-py.png
+    cp "$ICON" "$APPDIR/marklens-py.png"
+    cp "$ICON" "$APPDIR/usr/share/icons/hicolor/512x512/apps/marklens-py.png"
+
+    # AppRun launcher.
+    cp packaging/AppRun "$APPDIR/AppRun"
+    chmod +x "$APPDIR/AppRun"
+
+    # $APPIMAGETOOL first, then PATH, then ~/bin, then packaging/tools at the
+    # repository root - the same four places, in the same order, that
+    # packaging/setup looks in, so a tool setup reported as "ok" is a tool this
+    # script can find. packaging/tools is where setup puts it when it downloads
+    # it itself; a copy at ~/bin still wins.
+    if [ -z "$APPIMAGETOOL" ]; then
+        if command -v appimagetool >/dev/null 2>&1; then
+            APPIMAGETOOL=$(command -v appimagetool)
+        elif [ -x "$HOME/bin/appimagetool" ]; then
+            APPIMAGETOOL="$HOME/bin/appimagetool"
+        else
+            APPIMAGETOOL="$(cd .. && pwd -P)/packaging/tools/appimagetool"
+        fi
+    fi
+    if [ ! -x "$APPIMAGETOOL" ]; then
+        echo "appimagetool not found at $APPIMAGETOOL"
+        echo "Looked at \$APPIMAGETOOL, on PATH, in ~/bin, then packaging/tools/."
+        echo
+        echo "Run packaging/setup - it downloads it into packaging/tools/."
+        echo "Or set APPIMAGETOOL=/path/to/appimagetool to use a copy of your own."
+        exit 1
+    fi
+
+    OUT="dist/Marklens-Python-${VERSION}-${ARCH}.AppImage"
+    ARCH=$ARCH "$APPIMAGETOOL" "$APPDIR" "$OUT"
+    if [ $? -ne 0 ]; then
+        echo "appimagetool failed"
+        exit 1
+    fi
+    echo "Built $OUT"
+fi
+
+#===============================================
+# .deb and .rpm
+#===============================================
+# PyInstaller has already produced a directory that runs in place, carrying its
+# own Python and Qt, so it is the payload as it stands - no AppDir in between.
+# The AppImage's AppRun is not carried over either: a package installs a
+# wrapper in /usr/bin instead. See packaging/make_linux_package.
+pkg_formats=""
+want deb && pkg_formats="deb"
+want rpm && pkg_formats="${pkg_formats:+$pkg_formats,}rpm"
+
+if [ -n "$pkg_formats" ]; then
+    ../packaging/make_linux_package \
+        --name marklens-py \
+        --stem Marklens-Python \
+        --version "$VERSION" \
+        --payload dist/marklens-py \
+        --binary marklens-py \
+        --desktop packaging/marklens-py.desktop \
+        --icon ../shared/icon-py.png \
+        --summary "A fast Markdown viewer" \
+        --description "Marklens renders Markdown with syntax highlighting, Mermaid diagrams and live reload on change. This is the Python/PySide6 port, one of three implementations of the same viewer kept behaviourally identical by a shared specification." \
+        --outdir dist \
+        --formats "$pkg_formats"
+    if [ $? -ne 0 ]; then
+        echo "Building the packages failed"
+        exit 1
     fi
 fi
-if [ ! -x "$APPIMAGETOOL" ]; then
-    echo "appimagetool not found at $APPIMAGETOOL"
-    echo "Looked at \$APPIMAGETOOL, on PATH, in ~/bin, then packaging/tools/."
-    echo
-    echo "Run packaging/setup - it downloads it into packaging/tools/."
-    echo "Or set APPIMAGETOOL=/path/to/appimagetool to use a copy of your own."
-    exit 1
-fi
-
-ARCH=$(uname -m)
-OUT="dist/Marklens-Python-${VERSION}-${ARCH}.AppImage"
-ARCH=$ARCH "$APPIMAGETOOL" "$APPDIR" "$OUT"
-if [ $? -ne 0 ]; then
-    echo "appimagetool failed"
-    exit 1
-fi
-
-echo "Built $OUT"

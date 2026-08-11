@@ -33,10 +33,12 @@ fi
 if [ "$1" = "help" ]; then
     echo "build_linux [app|appimage|deb|rpm]"
     echo "  app  build the executable only, runnable with packaging/run_linux"
-    echo "  the rest are bundle formats; the default is appimage,deb"
+    echo "  the rest are bundle formats; the default is appimage,deb,rpm"
     exit 0
 fi
-BUNDLES="${1:-appimage,deb}"
+# Tauri writes the .rpm with a Rust implementation of the format rather than by
+# shelling out, so unlike the other two ports this one needs no rpmbuild.
+BUNDLES="${1:-appimage,deb,rpm}"
 
 if ! command -v cargo >/dev/null 2>&1; then
     echo "cargo is not on PATH - install Rust from https://rustup.rs"

@@ -55,7 +55,7 @@ Every port takes the same two verbs, on every platform:
 ```bash
 <port>/packaging/build_win  [app|installer]     # build_win.bat in cmd
 <port>/packaging/build_mac  [app|dmg|pkg]
-<port>/packaging/build_linux [app|appimage]     # rust also: deb, rpm
+<port>/packaging/build_linux [app|appimage|deb|rpm]
 <port>/packaging/run_win                        # run_win.bat in cmd
 <port>/packaging/run_mac
 <port>/packaging/run_linux
@@ -64,6 +64,37 @@ Every port takes the same two verbs, on every platform:
 `app` stops once there is something runnable and skips the packaging step,
 which is the fast loop while working. The packaging verb — the default —
 carries on and produces the installer. `help` prints the modes.
+
+On Linux the packaging verb is a comma-separated list of formats, and the
+default is all three: `appimage,deb,rpm`. The AppImage runs anywhere without
+being installed; the `.deb` and `.rpm` are for people who would rather their
+package manager knew about it.
+
+All three ports ship the same way in every format — self-contained, with their
+own copy of Qt or the Python runtime — so which format you pick changes how it
+is installed and nothing about what runs. The `.deb` and `.rpm` put that tree
+under `/opt/<name>` with a launcher in `/usr/bin`; `packaging/make_linux_package`
+builds both from a staged directory and explains the layout. The Rust port is
+the exception only in mechanism: Tauri bundles all three formats itself, and it
+depends on the system webview rather than carrying one.
+
+Every Linux package carries its licence paperwork under `share/doc/<name>`:
+the project's MIT licence, a NOTICE describing the bundled Qt, and the
+LGPL-3.0 and GPL-3.0 texts it refers to, staged by
+`packaging/collect_licenses` from `shared/licenses`. linuxdeploy separately
+collects a copyright file for every library it takes from a distribution
+package, which is why the C++ build prints a "Could not find copyright files"
+warning for each file no package owns — our own executable, and all of Qt.
+Those warnings are expected and worth keeping: they are how a library that
+stopped being collected would show up.
+
+Two tools are needed that the setup scripts cannot download for you, because
+they are system packages rather than single-file releases: `dpkg-deb` for the
+`.deb` (part of `dpkg`) and `rpmbuild` for the `.rpm` (`apt install rpm`, or
+`dnf install rpm-build`). Setup reports each as a note rather than a
+requirement, and a build with one missing still produces the other formats and
+says which it skipped. The Rust port needs neither — Tauri writes both formats
+itself.
 
 `run_*` is the development tool: it runs the **working tree**, building first
 where that means anything, and never touches `dist/`. One answer per platform

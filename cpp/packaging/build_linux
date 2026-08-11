@@ -1,15 +1,22 @@
 #!/bin/bash
 #
-# Build the Linux application bundle and an AppImage for the C++ port.
+# Build the Linux application bundle and its packages for the C++ port.
 #
-#   cpp/packaging/build_linux            # build, deploy and package
-#   cpp/packaging/build_linux app        # build and deploy only, no AppImage
-#   cpp/packaging/build_linux appimage   # the default, named explicitly
+#   cpp/packaging/build_linux                  # all three packages
+#   cpp/packaging/build_linux app              # build and deploy only
+#   cpp/packaging/build_linux appimage         # one format, named explicitly
+#   cpp/packaging/build_linux deb,rpm          # or several
 #   cpp/packaging/build_linux help
 #
 # Produces:
 #   cpp/dist/                                       the staged application
 #   cpp/dist/Marklens-Cpp-<version>-<arch>.AppImage
+#   cpp/dist/Marklens-Cpp-<version>-<arch>.deb
+#   cpp/dist/Marklens-Cpp-<version>-<arch>.rpm
+#
+# The .deb and .rpm carry the same bundled Qt the AppImage does, installed
+# under /opt - see packaging/make_linux_package for why, and for what the two
+# package formats need that an AppImage does not.
 #
 # Requires CMake, Qt 6 with WebEngineWidgets, md4c, Python 3, and linuxdeploy
 # with its Qt plugin - packaging/setup downloads both into packaging/tools/ at
@@ -23,21 +30,28 @@
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
 
-mode="${1:-appimage}"
+usage() {
+    echo "build_linux [app|appimage|deb|rpm]"
+    echo "  app       build and deploy into dist/, runnable in place"
+    echo "  the rest are package formats, comma-separated;"
+    echo "  the default is appimage,deb,rpm"
+}
+
+mode="${1:-appimage,deb,rpm}"
 case "$mode" in
-    help)
-        echo "build_linux [app|appimage]"
-        echo "  app       build and deploy into dist/, runnable in place"
-        echo "  appimage  the above, plus an AppImage (default)"
-        exit 0
-        ;;
-    app|appimage) ;;
+    help) usage; exit 0 ;;
+    app) ;;
     *)
-        echo "Unknown mode: $mode"
-        echo "build_linux [app|appimage]"
-        exit 1
+        # Validated up front: a typo should not be discovered after a Qt build.
+        for fmt in ${mode//,/ }; do
+            case "$fmt" in
+                appimage|deb|rpm) ;;
+                *) echo "Unknown format: $fmt"; usage; exit 1 ;;
+            esac
+        done
         ;;
 esac
+want() { case ",$mode," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 PYTHON="${PYTHON:-python3}"
 BUILD_DIR=build-packaging
@@ -263,10 +277,48 @@ EOF
     export QMAKE
 fi
 
+#===============================================
+# Licences
+#===============================================
+# Before linuxdeploy runs, so that these land in the AppImage as well as in the
+# .deb and .rpm - linuxdeploy writes the AppImage in the same invocation that
+# fills the AppDir, so anything added afterwards would only reach the packages.
+#
+# linuxdeploy collects a copyright file for every library it takes from a
+# distribution package. It cannot for the Qt libraries or for our own
+# executable, because neither belongs to one, and says so once per file - which
+# is where the "Could not find copyright files" warnings come from. Those
+# warnings are worth keeping: they are how a library that stops being collected
+# would show up. What they were pointing at is filled in here.
+QT_VERSION=""
+if [ -n "$QMAKE" ]; then
+    QT_VERSION=$("$QMAKE" -query QT_VERSION 2>/dev/null)
+fi
+../packaging/collect_licenses \
+    "$APPDIR/usr/share/doc/marklens-cpp" \
+    "Marklens (C++/Qt port)" \
+    "Qt${QT_VERSION:+ }$QT_VERSION, linked dynamically and bundled into this
+package by linuxdeploy, along with the Qt plugins and the QtWebEngine
+resources. QtWebEngine carries its own copy of Chromium, which is covered by
+Qt's licensing."
+if [ $? -ne 0 ]; then
+    echo "Collecting the licences failed"
+    exit 1
+fi
+
 ARCH=$(uname -m)
 OUT="$STAGE_DIR/Marklens-Cpp-${VERSION}-${ARCH}.AppImage"
 
+# linuxdeploy runs whichever formats were asked for, because collecting Qt into
+# the AppDir is its other job and the .deb and .rpm are built from that same
+# tree. --output appimage is what turns the AppDir into a file, so it is added
+# only when an AppImage is actually wanted.
+#
 # --custom-apprun keeps our launcher; without it the plugin overwrites AppRun.
+appimage_args=()
+if want appimage; then
+    appimage_args=(--output appimage)
+fi
 ARCH=$ARCH OUTPUT="$OUT" "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/marklens-cpp" \
@@ -275,10 +327,46 @@ ARCH=$ARCH OUTPUT="$OUT" "$LINUXDEPLOY" \
     --icon-filename marklens-cpp \
     --custom-apprun packaging/AppRun \
     --plugin qt \
-    --output appimage
+    "${appimage_args[@]}"
 if [ $? -ne 0 ]; then
     echo "linuxdeploy failed"
     exit 1
 fi
 
-echo "Built $OUT"
+if want appimage; then
+    echo "Built $OUT"
+fi
+
+#===============================================
+# .deb and .rpm
+#===============================================
+# Both come from the AppDir that linuxdeploy has just filled: same executable,
+# same bundled Qt, relocated to /opt. The AppImage's AppRun is not carried over
+# - a package installs a wrapper in /usr/bin instead - and neither is its
+# QTWEBENGINE_DISABLE_SANDBOX. That setting is there because Chromium's setuid
+# sandbox helper cannot work from inside a squashfs mount; an installed tree is
+# on an ordinary filesystem, where the sandbox starts normally, so the package
+# keeps it on. Verified by the absence of --no-sandbox on the running
+# QtWebEngineProcess.
+pkg_formats=""
+want deb && pkg_formats="deb"
+want rpm && pkg_formats="${pkg_formats:+$pkg_formats,}rpm"
+
+if [ -n "$pkg_formats" ]; then
+    ../packaging/make_linux_package \
+        --name marklens-cpp \
+        --stem Marklens-Cpp \
+        --version "$VERSION" \
+        --payload "$APPDIR/usr" \
+        --binary bin/marklens-cpp \
+        --desktop packaging/marklens-cpp.desktop \
+        --icon ../shared/icon-cpp.png \
+        --summary "A fast Markdown viewer" \
+        --description "Marklens renders Markdown with syntax highlighting, Mermaid diagrams and live reload on change. This is the C++/Qt port, one of three implementations of the same viewer kept behaviourally identical by a shared specification." \
+        --outdir "$STAGE_DIR" \
+        --formats "$pkg_formats"
+    if [ $? -ne 0 ]; then
+        echo "Building the packages failed"
+        exit 1
+    fi
+fi
