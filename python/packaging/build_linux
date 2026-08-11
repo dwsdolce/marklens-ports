@@ -95,6 +95,41 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+#===============================================
+# Drop the Qt plugins that cannot load
+#===============================================
+# PyInstaller's PySide6 hook collects every plugin type the shipped Qt
+# libraries reference, and the wheel ships all of Qt. packaging/marklens.spec
+# explains why excluding them there does not work - the hook puts them back -
+# but removing them from the finished bundle does.
+#
+# Every one of these is backed by a library the wheel does not carry, so it
+# could not load on any machine, and none of them is anything a Markdown viewer
+# would ask for. They were the "objects have unresolved libraries" the .deb's
+# dependency scan reported, and about 3 MB of a bundle that ships them.
+#
+# libqtiff is the one with a visible consequence: it wants libtiff.so.5, and
+# current distributions ship libtiff.so.6, whose soname is deliberately
+# different because the ABI changed. So TIFF images have not rendered for some
+# time. Nothing here can fix that - the wheel bundles no libtiff of its own,
+# and a .so.5 symlink onto .so.6 would be an ABI lie - and the C++ port ships
+# no TIFF plugin at all, so dropping it makes the two ports agree rather than
+# shipping a plugin that fails. Every other image format plugin resolves.
+QT_BUNDLE=dist/marklens-py/_internal/PySide6/Qt
+for dead in \
+    plugins/sqldrivers \
+    plugins/designer \
+    plugins/egldeviceintegrations \
+    plugins/imageformats/libqtiff.so \
+    qml/QtWayland \
+    qml/QtQuick/Shapes/DesignHelpers
+do
+    if [ -e "$QT_BUNDLE/$dead" ]; then
+        echo "  dropping unloadable $dead"
+        rm -rf "${QT_BUNDLE:?}/$dead"
+    fi
+done
+
 if [ "$mode" = "app" ]; then
     echo "Built python/dist/marklens-py - run it with packaging/run_linux"
     exit 0

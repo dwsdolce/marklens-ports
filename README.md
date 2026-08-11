@@ -64,7 +64,7 @@ you can run all three at once and compare. See
 ## Known issues
 
 Nothing here is a regression. The three ports have been eyeballed side by side
-on Windows and match; what remains is one deliberate divergence and one
+on Windows and match; what remains is two deliberate divergences and one
 platform nobody has run.
 
 - **Most of the packaging has only been run on Windows.** The three ports
@@ -83,6 +83,18 @@ platform nobody has run.
   `app_config_dir`. Deliberate for now — unifying them means pinning one path
   in `shared/spec/SPEC.md`, because `dirs`, `platformdirs` and `QStandardPaths`
   disagree about where config belongs on Windows and macOS.
+
+- **The ports render fewer image formats than the macOS original.** They render
+  PNG, JPEG, GIF, WebP, BMP, ICO and SVG — the set `shared/spec/SPEC.md`
+  requires — and a `.tif` shows a broken-image icon. Images are decoded by the
+  webview rather than by the port, and the original inherits macOS ImageIO
+  through WKWebView, so it displays TIFF, HEIC and anything else the system
+  knows. Qt WebEngine and WebView2, both Chromium, and WebKitGTK each carry a
+  smaller web-oriented set. Deliberate: closing it would mean enumerating every
+  format ImageIO decodes and writing a converter in three languages, for
+  formats a Markdown document almost never carries. The Rust port is not even
+  consistent with itself here — its macOS build is WKWebView, so it shows what
+  the original shows.
 
 ## License
 

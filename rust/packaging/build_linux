@@ -66,15 +66,25 @@ mkdir -p dist
 #===============================================
 # Generate the version from the git commit count
 #===============================================
-# The bundle itself carries the three-part version from tauri.conf.json, which
-# Tauri requires to be valid semver; the fourth component is the build number
-# and appears in the package file names, matching the other two ports.
+# The package file names carry the four-part version, matching the other two
+# ports. What goes *inside* the .deb and .rpm has to be valid semver, because
+# Tauri validates it, so 0.1.0.31 becomes 0.1.0+31 - the build number as semver
+# build metadata.
+#
+# This used to be left at the three-part version from tauri.conf.json, on the
+# grounds that the build number was visible in the file name. That made every
+# build declare 0.1.0, and a package whose version never changes cannot be
+# upgraded: dpkg and rpm compare the version field and nothing else, so
+# installing a new build over an old one was treated as a reinstall. Both order
+# 0.1.0+31 after 0.1.0+30 and after a plain 0.1.0, so an existing install
+# upgrades too.
 VERSION=$("$PYTHON" ../tools/gen_version_build.py rust --print)
 if [ $? -ne 0 ]; then
     echo "Generating the version failed"
     exit 1
 fi
-echo "Creating packages for version ${VERSION}"
+BUNDLE_VERSION="${VERSION%.*}+${VERSION##*.}"
+echo "Creating packages for version ${VERSION} (bundles declare ${BUNDLE_VERSION})"
 
 if [ "$BUNDLES" = "app" ]; then
     (cd src-tauri && cargo build --release)
@@ -90,7 +100,12 @@ fi
 #===============================================
 # Build and bundle
 #===============================================
-(cd src-tauri && cargo tauri build --bundles "$BUNDLES")
+# --config overrides the version for this build only, so tauri.conf.json keeps
+# the plain semver it is meant to hold and nothing has to be edited or restored
+# around a build.
+(cd src-tauri && cargo tauri build \
+    --config "{\"version\":\"$BUNDLE_VERSION\"}" \
+    --bundles "$BUNDLES")
 if [ $? -ne 0 ]; then
     echo "cargo tauri build failed"
     exit 1

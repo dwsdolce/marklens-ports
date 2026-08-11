@@ -26,6 +26,43 @@ Sandbox is deleted here, because Windows/Linux desktop apps aren't sandboxed:
    `highlight.min.js`, `mermaid.min.js`, and a light/dark hljs theme.
 4. `highlight.js` highlights `pre code` on load; mermaid runs on `.mermaid`.
 
+## Images
+
+The page's base URL is the document's own folder, so `![](diagram.png)`
+resolves beside the file. What decodes it is the webview, not the port — which
+is why the supported formats are a spec matter at all. The three ports embed
+three different engines, and each engine carries its own decoders.
+
+Every port, on every platform, renders:
+
+`PNG`, `JPEG`, `GIF`, `WebP`, `BMP`, `ICO`, `SVG`
+
+That list is the contract. It is deliberately a list of what works rather than
+a list of what does not, because the set that does not work is open-ended and
+changes with each engine and each platform. Anything absent from it is
+unsupported; a document that needs one of those formats should carry a
+converted copy.
+
+A port may happen to render more, and that is not a promise. A macOS build
+displays TIFF, HEIC and whatever else the system decoder knows, because
+WKWebView hands decoding to ImageIO and inherits the operating system's list.
+A document relying on that is relying on a platform rather than on Marklens.
+Nothing joins the required set until all three ports render it on all three
+platforms.
+
+This is a deliberate divergence from the macOS original, which has no format
+list of its own: it passes the HTML to WKWebView and inherits ImageIO's, so it
+shows formats these ports cannot. The ports that embed Chromium — Qt WebEngine
+for the C++ and Python ports everywhere, WebView2 for Rust on Windows — and
+WebKitGTK for Rust on Linux all ship a smaller, web-oriented set instead.
+Closing the gap would mean enumerating every format ImageIO decodes and
+shipping a converter in three languages, for formats a Markdown document
+almost never carries.
+
+The seven were measured, not assumed: the same document rendered through
+Chromium and through WebKitGTK, the two narrowest engines in use. Both decode
+all seven; neither decodes TIFF.
+
 ## Links (intercepted, not followed by the webview)
 
 - **External** (`https:`, `mailto:`, …) → open in the system browser.
