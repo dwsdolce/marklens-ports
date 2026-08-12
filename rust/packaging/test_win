@@ -1,0 +1,23 @@
+#!/bin/bash
+#
+# Run the Rust port's tests against the current source.
+#
+#   rust/packaging/test_win [cargo test args...]
+#
+# This is the tool for testing while working: `cargo test` rebuilds whatever
+# changed and runs it, against the working tree rather than anything under
+# dist/. Anything you pass is handed to cargo, so
+# `packaging/test_win link_cases` selects a single test.
+#
+# The tests live in src-tauri, which is where the crate is; that cd is the only
+# reason this is a script rather than a one-liner.
+
+cd "$(dirname "$0")/.."
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo is not on PATH. Run packaging/setup first."
+    exit 1
+fi
+
+cd src-tauri
+exec cargo test "$@"

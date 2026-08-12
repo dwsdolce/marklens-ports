@@ -57,10 +57,21 @@ It never runs anything under `dist/` — that is what **Package** is for.
 ## Check
 
 ```bash
-PYTHONPATH=tests python -m pytest -q      # whole suite, with the venv active
-ruff check src tests
+packaging/test_win         # Git Bash or Cygwin - the test suite
+packaging\test_win.bat     # cmd
+packaging/test_mac
+packaging/test_linux
+
+ruff check src tests       # lint and types have no per-platform wrapper
 mypy src
 ```
+
+The `test_*` scripts are the same shape as `run_*` and `build_*`: one per
+platform, each running the suite against the working tree. Arguments go
+straight to pytest, so `packaging/test_linux -k renderer` selects a subset. By
+hand it is `PYTHONPATH=tests python -m pytest -q`, with the venv active — this
+port needs no build step, so the wrapper only sets `PYTHONPATH` and checks the
+venv, and exists mostly so the verb matches the other two ports.
 
 `pytest` runs everything: the shared-fixture logic tests (`test_renderer.py`,
 `test_links.py`, loading `../shared/spec/fixtures/*.json`) plus the two GUI

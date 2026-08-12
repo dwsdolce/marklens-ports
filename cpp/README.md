@@ -58,11 +58,19 @@ It never runs anything under `dist/` — that is what **Package** is for.
 ## Build
 
 `packaging/run_*` does this for you; these are the same two commands by hand.
+Run **both, in order** — the first configures the tree, the second compiles it.
+(The two under Test below are the opposite: alternatives, pick one.)
 
 ```bash
-cmake -B build
-cmake --build build --config Release
+cmake -B build                          # configure
+cmake --build build --config Release    # compile
 ```
+
+`--config Release` is read only by multi-config generators, which in practice
+means Visual Studio. Everywhere else it is accepted and ignored, and the build
+is a Release one regardless: `CMakeLists.txt` defaults `CMAKE_BUILD_TYPE` to
+Release when a single-config generator has left it empty. So the same two
+lines work on all three platforms.
 
 Where the binary lands depends on the generator, which is easy to trip over:
 
@@ -83,9 +91,22 @@ neither clobbers the other.
 ## Test
 
 ```bash
-ctest --test-dir build --output-on-failure
-ctest --test-dir build --output-on-failure -C Release   # Windows: name the config
+packaging/test_win         # Git Bash or Cygwin
+packaging\test_win.bat     # cmd
+packaging/test_mac
+packaging/test_linux
 ```
+
+One per platform, the same shape as `run_*` and `build_*`. Each configures and
+builds if it needs to, then runs the tests, so this works on a fresh checkout
+with nothing built. Arguments are passed straight to ctest:
+`packaging/test_linux -R core` runs one test.
+
+By hand it is `ctest --test-dir build --output-on-failure`, plus `-C Release`
+on Windows — where one `build/` tree holds every configuration, so ctest has to
+be told which to run. That flag is the reason these scripts exist: forget it
+and ctest reports "no tests were found" and exits cleanly, which reads like a
+broken checkout rather than a missing argument.
 
 Three tests, all headless — ctest sets the offscreen platform and the
 QtWebEngine sandbox flags for the GUI ones:

@@ -1,7 +1,7 @@
 # Packaging
 
 Each port builds its own installers, from its own directory, with the same
-three script names:
+script names:
 
 ```
 python/packaging/build_win  build_win.bat  build_mac  build_linux
@@ -50,7 +50,7 @@ prefix stands in for one.
 
 ## Build and run
 
-Every port takes the same two verbs, on every platform:
+Every port takes the same three verbs, on every platform:
 
 ```bash
 <port>/packaging/build_win  [app|installer]     # build_win.bat in cmd
@@ -59,6 +59,9 @@ Every port takes the same two verbs, on every platform:
 <port>/packaging/run_win                        # run_win.bat in cmd
 <port>/packaging/run_mac
 <port>/packaging/run_linux
+<port>/packaging/test_win                       # test_win.bat in cmd
+<port>/packaging/test_mac
+<port>/packaging/test_linux
 ```
 
 `app` stops once there is something runnable and skips the packaging step,
@@ -120,9 +123,9 @@ the point each one can: Python at runtime, C++ at configure time, Rust in
 
 | Port   | Windows                       | macOS                        | Linux                                   |
 |--------|-------------------------------|------------------------------|-----------------------------------------|
-| Python | `Marklens_Python_V<ver>.exe`  | `Marklens_Python_V<ver>.dmg` | `Marklens-Python-<ver>-<arch>.AppImage` |
-| C++    | `Marklens_Cpp_V<ver>.exe`     | `Marklens_Cpp_V<ver>.dmg`    | `Marklens-Cpp-<ver>-<arch>.AppImage`    |
-| Rust   | `Marklens_Rust_V<ver>.exe`    | `Marklens_Rust_V<ver>.dmg`   | `Marklens-Rust-<ver>-<arch>.AppImage` + `.deb` |
+| Python | `Marklens_Python_V<ver>.exe`  | `Marklens_Python_V<ver>.dmg` | `Marklens-Python-<ver>-<arch>.AppImage` + `.deb` + `.rpm` |
+| C++    | `Marklens_Cpp_V<ver>.exe`     | `Marklens_Cpp_V<ver>.dmg`    | `Marklens-Cpp-<ver>-<arch>.AppImage` + `.deb` + `.rpm`    |
+| Rust   | `Marklens_Rust_V<ver>.exe`    | `Marklens_Rust_V<ver>.dmg`   | `Marklens-Rust-<ver>-<arch>.AppImage` + `.deb` + `.rpm` |
 
 Windows installers land in `<port>/installer/`, AppImages and Linux packages in
 `<port>/dist/`, disk images in `<port>/`.
@@ -134,10 +137,10 @@ macOS bundle identifier, so installing one never disturbs another.
 
 ## What has actually been run
 
-These scripts were written on Windows and have only run there. The
-applications they package are a separate matter — all three ports were
+These scripts were written on Windows and have since been exercised on Linux.
+The applications they package are a separate matter — all three ports were
 developed on macOS, and it is the packaging, not the ports, that is untried
-elsewhere.
+there.
 
 Exercised on Windows 11, with CMake 4.4, Visual Studio 2026 (MSVC 14.51),
 Qt 6.11.1, Rust 1.97 and Inno Setup 6:
@@ -148,11 +151,24 @@ Qt 6.11.1, Rust 1.97 and Inno Setup 6:
 | C++    | installer built, `ctest` 3/3, app launches from `dist/`    |
 | Rust   | installer built, fixtures 2/2                              |
 
-**No packaging script has been run on macOS or Linux.** `setup`, `build_mac`,
-`build_linux`, `run_mac` and `run_linux` are written from the documented
-behaviour of `macdeployqt`, `create-dmg`, `linuxdeploy` and `appimagetool`, not
-from a working build. Treat the first run on either as a debugging session, not
-a release.
+Exercised on Linux Mint 22.3 (Ubuntu 24.04 base, Cinnamon), with CMake 3.28.3,
+GCC 13.3, Qt 6.11.1, Rust 1.97, Python 3.14, WebKitGTK 2.52.3, dpkg 1.22.6 and
+rpm 4.18.2:
+
+| Port   | Linux                                                                       |
+|--------|-----------------------------------------------------------------------------|
+| Python | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; 36 tests pass |
+| C++    | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; `ctest` 3/3; renders from the installed tree |
+| Rust   | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; fixtures pass; opens a `.md` from the file manager |
+
+The `.rpm`s were built and their contents checked by extraction, but not
+installed: this is a Debian-family machine, and `rpm -i` on one is not a test
+of anything. An rpm distribution is still the untried case for that format.
+
+**No packaging script has been run on macOS.** `build_mac`, `run_mac` and
+`test_mac` are written from the documented behaviour of `macdeployqt` and
+`create-dmg`, not from a working build. Treat the first run there as a
+debugging session, not a release.
 
 ## Versions
 
@@ -171,8 +187,13 @@ that looks like a Unix path while Cygwin passes the `//` escape that fixes it
 through literally; a file works in both, and in `cmd`, and in the Inno Setup
 IDE.
 
-The Rust bundle itself keeps the three-part version, because Tauri requires
-valid semver there. The build number still appears in the installer file name.
+Tauri requires valid semver in the bundle, and `0.1.0.31` is not, so the Rust
+Linux packages declare `0.1.0+31` — the build number as semver build metadata,
+passed with `cargo tauri build --config` so `tauri.conf.json` keeps the plain
+version it is meant to hold. It has to change between builds: dpkg and rpm
+compare that field and nothing else, so a version that never moved made every
+install a reinstall rather than an upgrade. The Windows installer still takes
+the build number from the file name.
 
 ## Icons
 

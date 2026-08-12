@@ -67,15 +67,16 @@ Nothing here is a regression. The three ports have been eyeballed side by side
 on Windows and match; what remains is two deliberate divergences and one
 platform nobody has run.
 
-- **Most of the packaging has only been run on Windows.** The three ports
-  themselves were developed and run on macOS — that is what the initial commit
-  is — and the Python port now builds and runs on Linux, AppImage included.
-  Everything else added since was written and exercised on Windows alone:
-  `build_mac` and `run_mac` for all three ports, and on Linux the C++ and Rust
-  `setup`, `build_linux` and `run_linux` — with them `macdeployqt`,
-  `create-dmg`, `linuxdeploy` and its Qt plugin. The C++ port's md4c handling
-  also differs off Windows: a system md4c from Homebrew or apt should be found
-  first, taking a branch Windows never reaches.
+- **The packaging has never been run on macOS.** The three ports themselves
+  were developed and run there — that is what the initial commit is — but none
+  of the packaging was. Windows and Linux are both exercised now: all three
+  ports build, install and run from a `.deb` on Linux, with `.rpm`s built and
+  checked but not installed anywhere. What remains untried is `build_mac`,
+  `run_mac` and `test_mac` for all three ports, and with them `macdeployqt` and
+  `create-dmg`. The C++ port's md4c handling is another branch nobody has
+  taken: a system md4c from Homebrew should be found ahead of the copy
+  `setup` clones into `third_party/`, and on Linux it was the clone that got
+  used, so that path is still unexercised on both.
 
 - **Recent files are shared between the Qt ports but not with Rust.** The C++
   and Python ports both use `QSettings` under `Marklens/Marklens`, so they

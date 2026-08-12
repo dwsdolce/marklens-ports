@@ -47,9 +47,17 @@ It never runs anything under `dist/` — that is what **Package** is for.
 ## Test
 
 ```bash
-cd src-tauri
-cargo test            # core: comrak renderer + link resolver vs shared fixtures
+packaging/test_win         # Git Bash or Cygwin
+packaging\test_win.bat     # cmd
+packaging/test_mac
+packaging/test_linux
 ```
+
+One per platform, the same shape as `run_*` and `build_*`. Arguments go
+straight to cargo, so `packaging/test_linux link_cases` runs one test. By hand
+it is `cd src-tauri && cargo test` — core: the comrak renderer and link
+resolver against the shared fixtures. The wrapper exists so the verb matches
+the other two ports; the `cd` is the only thing it saves you.
 
 `tests/fixtures.rs` loads `../../shared/spec/fixtures/*.json` — the same
 contract the Python and C++ ports satisfy. comrak matched it with no per-engine

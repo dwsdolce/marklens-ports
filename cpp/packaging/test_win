@@ -1,0 +1,33 @@
+#!/bin/bash
+#
+# Run the C++ port's tests against the current source, building first if needed.
+#
+#   cpp/packaging/test_win [ctest args...]        # Git Bash or Cygwin
+#
+# This is the tool for testing while working: it always tests what is in the
+# working tree, never anything under dist/. Anything you pass is handed to
+# ctest, so `packaging/test_win -R core` selects a single test.
+#
+# It exists for the same reason run_win does. Visual Studio is a multi-config
+# generator: one build/ tree holds every configuration, so both the build and
+# the test have to name one. Forgetting -C does not fail usefully - ctest
+# reports "no tests were found" and exits, which reads like a broken checkout
+# rather than a missing flag.
+
+cd "$(dirname "$0")/.."
+
+if ! command -v cmake >/dev/null 2>&1; then
+    echo "cmake is not on PATH. Run packaging/setup first."
+    exit 1
+fi
+
+if [ ! -f build/CMakeCache.txt ]; then
+    echo "Configuring build/ ..."
+    cmake -B build || exit 1
+fi
+
+echo "Building ..."
+cmake --build build --config Release || exit 1
+
+echo "Testing ..."
+exec ctest --test-dir build --output-on-failure -C Release "$@"

@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Run the Python port's tests against the current source.
+#
+#   python/packaging/test_linux [pytest args...]
+#
+# This is the tool for testing while working: it tests the working tree, never
+# the frozen bundle under dist/. Anything you pass is handed to pytest, so
+# `packaging/test_linux -k renderer` selects a subset.
+#
+# There is no build step - that is the whole point of the port. PYTHONPATH is
+# set because the GUI tests import their helpers from tests/ itself.
+#
+# Which python this uses was settled before the script started: the venv you
+# activated, or the one VS Code activated in its terminal. Nothing here goes
+# looking for a venv, for the same reason run_linux does not - a script that picks
+# its own interpreter can pick a different one from the one you installed into.
+
+cd "$(dirname "$0")/.."
+
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "No virtual environment is active."
+    echo "Activate it, then run this again:"
+    echo "    source .venv/bin/activate      # from the repository root"
+    echo "Opening marklens-ports in VS Code activates it in new terminals."
+    exit 1
+fi
+
+export PYTHONPATH=tests
+exec python -m pytest -q "$@"
