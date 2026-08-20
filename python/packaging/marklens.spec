@@ -16,6 +16,7 @@ assets._shared_dir() finds them via sys._MEIPASS.
 """
 
 import os
+import re
 import sys
 
 spec_dir = os.path.abspath(SPECPATH)
@@ -89,6 +90,59 @@ pyside_hidden = collect_submodules("PySide6", filter=_wanted_module)
 pyside_binaries = collect_dynamic_libs("PySide6")
 pyside_datas = collect_data_files("PySide6")
 
+# The Qt developer tools - Assistant, Designer and Linguist - are collected as
+# nested .app bundles that a Markdown viewer never uses, and that cannot be
+# signed: PyInstaller writes a nested bundle's payload under Contents/Resources
+# and symlinks Contents/Info.plist back to it, while codesign requires that file
+# to be regular. It rejects the whole app with "the main executable or Info.plist
+# must be a regular file", which fails notarisation.
+#
+# Filtered again after Analysis, because the PySide6 hook re-adds what the spec
+# drops here - the same reason the SQL driver plugins below cannot be excluded.
+_UNSIGNABLE = re.compile(r"PySide6[\\/](Assistant|Designer|Linguist)\.app")
+
+
+def _keep(dest):
+    return not (sys.platform == "darwin" and _UNSIGNABLE.search(dest))
+
+
+pyside_datas = [(src, dest) for src, dest in pyside_datas if _keep(dest)]
+
+# PyInstaller decides which version of QtWebEngineCore.framework to collect by
+# listing its Versions directory, discarding "Current", and taking the last
+# entry in sorted order (see collect_qtwebengine_files in
+# PyInstaller/utils/hooks/qt). Anything that is not a version directory but
+# sorts after "A" is therefore mistaken for one, and the whole WebEngine payload
+# is collected into it. The resulting framework is malformed, its nested
+# QtWebEngineProcess.app fails signature validation, and notarisation rejects
+# the build with "the signature of the binary is invalid" - a message that says
+# nothing about where the problem came from.
+#
+# An empty stray directory is removed, since nothing can be lost with it. One
+# with contents is left alone and the build stops, because deleting it might.
+if sys.platform == "darwin":
+    import PySide6
+
+    _versions_dir = os.path.join(
+        os.path.dirname(PySide6.__file__),
+        "Qt", "lib", "QtWebEngineCore.framework", "Versions",
+    )
+    if os.path.isdir(_versions_dir):
+        for _entry in sorted(os.listdir(_versions_dir)):
+            if _entry == "Current" or re.fullmatch(r"[A-Z]|\d+(\.\d+)*", _entry):
+                continue
+            _stray = os.path.join(_versions_dir, _entry)
+            if os.path.isdir(_stray) and not os.listdir(_stray):
+                os.rmdir(_stray)
+                print(f"NOTE: removed stray empty {_stray!r}, which PyInstaller "
+                      f"would have mistaken for a framework version")
+            else:
+                raise SystemExit(
+                    f"ERROR: {_stray!r} is not a framework version directory.\n"
+                    f"PyInstaller would collect QtWebEngine into it and produce an\n"
+                    f"app that cannot be notarised. Inspect it, then remove it."
+                )
+
 datas += pyside_datas
 
 # Two warnings survive every build and are not worth chasing:
@@ -156,6 +210,11 @@ a = Analysis(
     excludes=["tkinter"],
     noarchive=False,
 )
+
+# See _UNSIGNABLE above: the hook puts these back, so they are stripped again
+# here, where nothing runs after to re-add them.
+a.datas = [entry for entry in a.datas if _keep(entry[0])]
+a.binaries = [entry for entry in a.binaries if _keep(entry[0])]
 
 pyz = PYZ(a.pure)
 

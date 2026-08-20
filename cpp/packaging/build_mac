@@ -155,6 +155,83 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+#===============================================
+# Repair the WebEngine helper's library paths
+#===============================================
+# macdeployqt writes some dependencies as @executable_path/../Frameworks/...,
+# which resolves correctly for the main executable and not at all for
+# QtWebEngineProcess, whose @executable_path is the helper's own MacOS
+# directory. The helper then dies in dyld and the web view never renders,
+# while the app itself starts normally - so this is invisible until a document
+# is opened. The script rewrites those to @rpath, which works for both.
+FIX_DEPS="$(cd "$(dirname "$0")/.." && pwd)/scripts/fix_bundle_deps.sh"
+if [[ -x "$FIX_DEPS" ]]; then
+    CODESIGN_IDENTITY="$CODESIGN_IDENTITY" "$FIX_DEPS" "$STAGE_DIR/${APP_NAME}.app" || exit 1
+else
+    echo "Missing ${FIX_DEPS} - the WebEngine helper will fail to load its"
+    echo "libraries and no document will render."
+    exit 1
+fi
+
+#===============================================
+# Re-sign with the hardened runtime
+#===============================================
+# Two reasons the bundle has to be signed again here. macdeployqt signs without
+# the hardened runtime and cannot be asked for one, which notarisation rejects
+# with "The executable does not have the hardened runtime enabled". And
+# fix_bundle_deps.sh has just rewritten load commands, which invalidates every
+# signature it touched.
+#
+# Order matters: a bundle's signature covers the code nested inside it, so the
+# innermost pieces are signed first and the app last. Signing the app first and
+# a framework afterwards silently invalidates the app.
+if [[ -n "$CODESIGN_IDENTITY" ]]; then
+    echo "Re-signing with the hardened runtime"
+    app_path="$STAGE_DIR/${APP_NAME}.app"
+    webengine_fw="$app_path/Contents/Frameworks/QtWebEngineCore.framework"
+    helper="$webengine_fw/Versions/A/Helpers/QtWebEngineProcess.app"
+
+    # V8 allocates executable memory, which the hardened runtime forbids unless
+    # the binary is entitled to it. Qt ships those exemptions beside the helper.
+    # Signing without them produces a helper that notarises and then crashes as
+    # soon as a page loads, so a missing file is fatal rather than a warning.
+    if [[ -d "$helper" ]]; then
+        entitlements="$helper/Contents/Resources/QtWebEngineProcess.entitlements"
+        if [[ ! -f "$entitlements" ]]; then
+            echo "Missing ${entitlements}"
+            echo "Without it the helper is signed with no JIT exemption and the"
+            echo "web view crashes as soon as it loads a page."
+            exit 1
+        fi
+        /usr/bin/codesign --force --timestamp --options runtime \
+            --entitlements "$entitlements" \
+            --sign "$CODESIGN_IDENTITY" "$helper" || exit 1
+    fi
+
+    # Everything else nested in the bundle, deepest path first so that a
+    # framework is sealed only after the code inside it has been.
+    while IFS= read -r item; do
+        [[ "$item" == "$helper"* ]] && continue
+        /usr/bin/codesign --force --timestamp --options runtime \
+            --sign "$CODESIGN_IDENTITY" "$item" || exit 1
+    done < <(
+        {
+            find "$app_path/Contents" -type d -name '*.framework'
+            find "$app_path/Contents" -type f \( -name '*.dylib' -o -name '*.so' \)
+        } | awk '{ print gsub(/\//, "/"), $0 }' | sort -rn | cut -d' ' -f2-
+    )
+
+    /usr/bin/codesign --force --timestamp --options runtime \
+        --sign "$CODESIGN_IDENTITY" "$app_path" || exit 1
+
+    # Catches a broken seal here, where the message names the part that failed,
+    # rather than at the notary service, which takes minutes to say less.
+    if ! /usr/bin/codesign --verify --deep --strict "$app_path"; then
+        echo "The re-signed bundle does not verify"
+        exit 1
+    fi
+fi
+
 if [[ $format == "app" ]]; then
     echo "Built dist/${APP_NAME}.app - run it with packaging/run_mac"
     exit 0
@@ -231,9 +308,25 @@ if [[ -z "$NOTARY_PROFILE" ]]; then
 fi
 
 echo "Notarizing the ${format}"
-xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE"
-if [ $? -ne 0 ]; then
+# notarytool exits 0 when Apple answers, not when Apple approves: a rejected
+# submission still returns success and prints "status: Invalid". Checking only
+# the exit status therefore carries on to stapling, which fails with a CloudKit
+# "Record not found" that says nothing about the real problem. The verdict is
+# read out of the output instead, and the log - which names the offending
+# binaries - is fetched before giving up.
+notary_output=$(xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE" 2>&1)
+notary_status=$?
+echo "$notary_output"
+if [ $notary_status -ne 0 ]; then
     echo "Notarizing the ${format} failed"
+    exit 1
+fi
+if ! echo "$notary_output" | grep -q "status: Accepted"; then
+    echo "Notarisation did not succeed - fetching the log"
+    submission_id=$(echo "$notary_output" | awk '/id: /{print $2; exit}')
+    if [[ -n "$submission_id" ]]; then
+        xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE"
+    fi
     exit 1
 fi
 

@@ -28,6 +28,9 @@ rust/src-tauri/gen/
 # Packaging output (see packaging/README.md)
 */installer/
 python/build/
+# build_mac writes the disk image and package next to the port itself.
+*.dmg
+*.pkg
 
 # Downloaded by packaging/setup: linuxdeploy, its Qt plugin, appimagetool.
 # Fetched rather than committed for the same reason cpp/third_party/md4c is.

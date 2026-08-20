@@ -41,8 +41,17 @@ find "$APP" -type f | while read -r f; do
     done <<< "$execpath"
 done
 
-# Re-sign (install_name_tool invalidated signatures). Ad-hoc; swap `-` for a
-# Developer ID identity to distribute without Gatekeeper warnings.
-codesign --force --deep --sign - "$APP"
+# install_name_tool invalidated every signature it touched, so something has to
+# re-sign. A caller with a real identity - packaging/build_mac - re-signs the
+# whole bundle itself, inside-out, with the hardened runtime and the WebEngine
+# helper's entitlements; signing here would only be thrown away, and `--deep`
+# would not apply those entitlements anyway. Ad-hoc signing remains the
+# fallback for a local build, where an unsigned bundle will not launch at all
+# on Apple silicon.
+if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+    echo "fix_bundle_deps: CODESIGN_IDENTITY is set - leaving signing to the caller"
+else
+    codesign --force --deep --sign - "$APP"
+fi
 
 echo "fix_bundle_deps: rewrote remaining /opt/homebrew load paths into $APP"

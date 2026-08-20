@@ -17,13 +17,26 @@
 #
 # Signing and notarisation are opt-in, because an unsigned build is perfectly
 # usable locally and this repository is public - no Developer ID is baked in.
-# These are the names Tauri's own bundler reads:
+# Two sets of names are read, because two things are signed.
+#
+# Tauri's own bundler signs the .app, with the hardened runtime, and notarises
+# and staples it:
 #
 #   export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
 #   export APPLE_KEYCHAIN_PROFILE="notarytool-profile"
 #
-# Setting APPLE_SIGNING_IDENTITY makes Tauri sign the app; adding
-# APPLE_KEYCHAIN_PROFILE makes it notarise and staple as well.
+# None of that touches the disk image, which Tauri builds around the finished
+# app. This script signs, notarises and staples the image itself, using the
+# same names as the C++ and Python ports so that all three read one settings
+# file and produce the same shape of artefact:
+#
+#   export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+#   export NOTARY_PROFILE="notarytool-profile"
+#
+# The image therefore makes a second trip to the notary service. That is the
+# price of shipping an image whose ticket is stapled as well as an app whose
+# ticket is stapled; either alone leaves a first launch depending on Apple
+# being reachable.
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
@@ -126,9 +139,69 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if [[ -z "$APPLE_SIGNING_IDENTITY" ]]; then
-    echo "APPLE_SIGNING_IDENTITY is not set - ${installer_name} is unsigned."
+#===============================================
+# Sign, notarize and staple - all skipped when unconfigured.
+#===============================================
+# Tauri has already signed the .app from APPLE_SIGNING_IDENTITY, and notarised
+# and stapled it if it was given notary credentials. None of that reaches the
+# disk image: Tauri builds the image around the app and leaves the image itself
+# unsigned and unstapled. The C++ and Python ports sign, notarise and staple
+# the image they ship, so the same is done here - the image is what a user
+# downloads, and a ticket stapled to it is what lets Gatekeeper clear it
+# without a round trip to Apple.
+if [[ -z "$CODESIGN_IDENTITY" ]]; then
+    echo "CODESIGN_IDENTITY is not set - leaving ${installer_name} unsigned."
     echo "Gatekeeper will warn on first launch; right-click > Open to bypass."
+    echo "Done creating ${installer_name}"
+    exit 0
+fi
+
+echo "Signing the ${format}"
+# --force, unlike the other two ports, because Tauri has already signed the
+# image it produced and codesign refuses an existing signature otherwise
+# ("is already signed"). The other two build their image with create-dmg,
+# which leaves it unsigned. Re-signing with the same identity is a no-op in
+# effect and keeps the step honest if Tauri ever stops signing it.
+/usr/bin/codesign --force -s "$CODESIGN_IDENTITY" $installer_name
+if [ $? -ne 0 ]; then
+    echo "Signing the ${format} failed"
+    exit 1
+fi
+
+if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "NOTARY_PROFILE is not set - skipping notarisation."
+    echo "Done creating ${installer_name}"
+    exit 0
+fi
+
+echo "Notarizing the ${format}"
+# notarytool exits 0 when Apple answers, not when Apple approves: a rejected
+# submission still returns success and prints "status: Invalid". Checking only
+# the exit status therefore carries on to stapling, which fails with a CloudKit
+# "Record not found" that says nothing about the real problem. The verdict is
+# read out of the output instead, and the log - which names the offending
+# binaries - is fetched before giving up.
+notary_output=$(xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE" 2>&1)
+notary_status=$?
+echo "$notary_output"
+if [ $notary_status -ne 0 ]; then
+    echo "Notarizing the ${format} failed"
+    exit 1
+fi
+if ! echo "$notary_output" | grep -q "status: Accepted"; then
+    echo "Notarisation did not succeed - fetching the log"
+    submission_id=$(echo "$notary_output" | awk '/id: /{print $2; exit}')
+    if [[ -n "$submission_id" ]]; then
+        xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE"
+    fi
+    exit 1
+fi
+
+echo "Stapling the ${format}"
+xcrun stapler staple $installer_name
+if [ $? -ne 0 ]; then
+    echo "Stapling the ${format} failed"
+    exit 1
 fi
 
 echo "Done creating ${installer_name}"

@@ -116,6 +116,49 @@ fi
 echo "Removing dist/marklens-py"
 rm -rf dist/marklens-py
 
+#===============================================
+# Re-sign the WebEngine helper with its entitlements
+#===============================================
+# PyInstaller signs everything it collects with the hardened runtime and
+# entitlements_file=None, so QtWebEngineProcess comes out hardened and entitled
+# to nothing. V8 cannot then reserve executable memory and the helper dies with
+# "V8 process OOM (Failed to reserve virtual memory for CodeRange)". That does
+# not stop the app launching - the window opens, the toolbar works, and no
+# document ever renders - so it survives every check that is not opening a file.
+#
+# Qt ships the exemptions the helper needs beside it. Re-signing the helper
+# invalidates the seal of the framework containing it, and that invalidates the
+# app's, so both are sealed again afterwards, innermost first.
+if [[ -n "$CODESIGN_IDENTITY" ]]; then
+    echo "Re-signing the WebEngine helper with its entitlements"
+    app_path="dist/Marklens Python.app"
+    webengine_fw="$app_path/Contents/Frameworks/PySide6/Qt/lib/QtWebEngineCore.framework"
+    helper="$webengine_fw/Versions/A/Helpers/QtWebEngineProcess.app"
+    entitlements="$helper/Contents/Resources/QtWebEngineProcess.entitlements"
+
+    if [[ ! -f "$entitlements" ]]; then
+        echo "Missing ${entitlements}"
+        echo "Without it the helper is signed with no JIT exemption and no"
+        echo "document will render."
+        exit 1
+    fi
+
+    /usr/bin/codesign --force --timestamp --options runtime \
+        --entitlements "$entitlements" \
+        --sign "$CODESIGN_IDENTITY" "$helper" || exit 1
+    /usr/bin/codesign --force --timestamp --options runtime \
+        --sign "$CODESIGN_IDENTITY" "$webengine_fw" || exit 1
+    /usr/bin/codesign --force --timestamp --options runtime \
+        --sign "$CODESIGN_IDENTITY" "$app_path" || exit 1
+
+    # Catches a broken seal here, where the message names the part that failed,
+    # rather than at the notary service, which takes minutes to say less.
+    if ! /usr/bin/codesign --verify --deep --strict "$app_path"; then
+        echo "The re-signed bundle does not verify"
+        exit 1
+    fi
+fi
+
 if [[ $format == "app" ]]; then
     echo "Built dist/Marklens Python.app - run it with packaging/run_mac"
     exit 0
@@ -192,9 +235,25 @@ if [[ -z "$NOTARY_PROFILE" ]]; then
 fi
 
 echo "Notarizing the ${format}"
-xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE"
-if [ $? -ne 0 ]; then
+# notarytool exits 0 when Apple answers, not when Apple approves: a rejected
+# submission still returns success and prints "status: Invalid". Checking only
+# the exit status therefore carries on to stapling, which fails with a CloudKit
+# "Record not found" that says nothing about the real problem. The verdict is
+# read out of the output instead, and the log - which names the offending
+# binaries - is fetched before giving up.
+notary_output=$(xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE" 2>&1)
+notary_status=$?
+echo "$notary_output"
+if [ $notary_status -ne 0 ]; then
     echo "Notarizing the ${format} failed"
+    exit 1
+fi
+if ! echo "$notary_output" | grep -q "status: Accepted"; then
+    echo "Notarisation did not succeed - fetching the log"
+    submission_id=$(echo "$notary_output" | awk '/id: /{print $2; exit}')
+    if [[ -n "$submission_id" ]]; then
+        xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE"
+    fi
     exit 1
 fi
 
