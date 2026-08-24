@@ -5,24 +5,31 @@
 #include <QEvent>
 #include <QFileOpenEvent>
 #include <QIcon>
-#include <QObject>
 #include <QString>
 
 namespace {
 
-// macOS does not pass a double-clicked or "Open With" document in argv. It
-// sends an Apple Event, which Qt delivers as a QFileOpenEvent to the
-// application object - and drops on the floor if nothing is listening. The app
-// then launches showing its empty state, which looks exactly like a file
-// association that was never registered, though the association is fine and
-// only the event was ignored.
+// QApplication that opens documents macOS delivers as events.
 //
-// The event can also arrive before exec() starts, when the app is launched *by*
-// opening a document, so a path that turns up before the window is ready is
-// held and opened once it is.
-class DocumentOpener : public QObject {
+// A double-clicked or "Open With" document does not arrive in argv on macOS.
+// The OS sends an Apple Event, which Qt turns into a QFileOpenEvent aimed at
+// the application object and discards if nothing handles it - so the app comes
+// up on its empty state, looking exactly like a file association that was never
+// registered.
+//
+// This overrides event() rather than installing an application-wide event
+// filter, matching the Python port. A filter would be safe here, since C++ has
+// none of the wrapper marshalling that made one segfault under PySide, but
+// event() is the narrower hook in either language: it sees only what is
+// addressed to the application, which is where QFileOpenEvent is sent, rather
+// than every event delivered to every object.
+//
+// The event can also arrive before exec(), when opening the document is what
+// launched the app, so a path that turns up before the window exists is held
+// and opened once there is somewhere to put it.
+class Application : public QApplication {
 public:
-    explicit DocumentOpener(QObject *parent = nullptr) : QObject(parent) {}
+    Application(int &argc, char **argv) : QApplication(argc, argv) {}
 
     // Attach the window and flush whatever arrived before it existed.
     void setWindow(MainWindow *window) {
@@ -34,9 +41,9 @@ public:
     }
 
 protected:
-    bool eventFilter(QObject *watched, QEvent *event) override {
-        if (event->type() == QEvent::FileOpen) {
-            const QString path = static_cast<QFileOpenEvent *>(event)->file();
+    bool event(QEvent *e) override {
+        if (e->type() == QEvent::FileOpen) {
+            const QString path = static_cast<QFileOpenEvent *>(e)->file();
             if (!path.isEmpty()) {
                 if (m_window)
                     m_window->openPath(path);
@@ -45,7 +52,7 @@ protected:
             }
             return true;
         }
-        return QObject::eventFilter(watched, event);
+        return QApplication::event(e);
     }
 
 private:
@@ -56,15 +63,10 @@ private:
 } // namespace
 
 int main(int argc, char **argv) {
-    QApplication app(argc, argv);
+    Application app(argc, argv);
     app.setApplicationName("Marklens");
     app.setOrganizationName("Marklens"); // gives QSettings (recent files) a home
     app.setWindowIcon(QIcon(assets::iconPath()));
-
-    // Installed before the window is built, so a launch-by-document event that
-    // arrives during construction is caught rather than missed.
-    auto *opener = new DocumentOpener(&app);
-    app.installEventFilter(opener);
 
     MainWindow window;
     window.show();
@@ -77,7 +79,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    opener->setWindow(&window);
+    app.setWindow(&window);
 
     return app.exec();
 }

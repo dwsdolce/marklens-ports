@@ -244,13 +244,32 @@ echo "Notarizing the ${format}"
 notary_output=$(xcrun notarytool submit $installer_name --wait --keychain-profile "$NOTARY_PROFILE" 2>&1)
 notary_status=$?
 echo "$notary_output"
+submission_id=$(echo "$notary_output" | awk '/id: /{print $2; exit}')
+
+# Losing the connection while polling is not a failed submission. The upload
+# has already happened and Apple keeps processing regardless, so a dropped
+# request here - "The request timed out", which is routine on a slow link and
+# a large image - used to throw away a build that had in fact been accepted.
+# Rejoin the wait instead; notarytool wait prints the same verdict line.
+if [ $notary_status -ne 0 ] && [[ -n "$submission_id" ]]; then
+    echo "Lost contact while waiting - rejoining submission ${submission_id}"
+    notary_output=$(xcrun notarytool wait "$submission_id" --keychain-profile "$NOTARY_PROFILE" 2>&1)
+    notary_status=$?
+    echo "$notary_output"
+fi
+
 if [ $notary_status -ne 0 ]; then
     echo "Notarizing the ${format} failed"
+    if [[ -n "$submission_id" ]]; then
+        echo "The submission may still be processing. Check it with:"
+        echo "  xcrun notarytool info $submission_id --keychain-profile $NOTARY_PROFILE"
+        echo "and if it was accepted, staple without rebuilding:"
+        echo "  xcrun stapler staple $installer_name"
+    fi
     exit 1
 fi
 if ! echo "$notary_output" | grep -q "status: Accepted"; then
     echo "Notarisation did not succeed - fetching the log"
-    submission_id=$(echo "$notary_output" | awk '/id: /{print $2; exit}')
     if [[ -n "$submission_id" ]]; then
         xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE"
     fi
