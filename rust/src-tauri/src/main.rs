@@ -490,6 +490,34 @@ fn main() {
             Ok(())
         })
         .on_menu_event(|app, event| handle_menu(app, event.id().0.as_str()))
-        .run(tauri::generate_context!())
-        .expect("error while running Marklens");
+        .build(tauri::generate_context!())
+        .expect("error while building Marklens")
+        // macOS does not pass a double-clicked or "Open With" document in argv.
+        // It sends an Apple Event, which Tauri surfaces here as RunEvent::Opened
+        // and otherwise discards - so the app comes up on its empty state and
+        // the file association looks broken when it is only unhandled.
+        .run(|app, event| {
+            let tauri::RunEvent::Opened { urls } = event else {
+                return;
+            };
+            let Some(path) = urls
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .next()
+            else {
+                return;
+            };
+            let path = path.to_string_lossy().into_owned();
+            let state = app.state::<AppState>();
+            // `current` is only set once the frontend has rendered something.
+            // Empty means the document is what launched the app and the
+            // frontend has yet to ask for its initial document, so leave the
+            // path there for it to collect; emitting now would be shouting at a
+            // page that is not listening.
+            if state.current.lock().unwrap().is_none() {
+                *state.initial.lock().unwrap() = Some(path);
+            } else {
+                let _ = app.emit("open-file", path);
+            }
+        });
 }
