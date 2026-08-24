@@ -52,3 +52,14 @@ python/src/marklens/version_build
 
 # packaging/setup builds md4c here (see cpp/packaging/setup)
 cpp/third_party/
+
+# rust/frontend's copies of the shared assets, produced by
+# rust/src-tauri/build.rs. Tauri bundles what is in frontend/, but the originals
+# live in shared/ where the other two ports read them; deriving rather than
+# committing a second set is what stops the two drifting.
+rust/frontend/styles.css
+rust/frontend/highlight.min.js
+rust/frontend/hljs-dark.css
+rust/frontend/hljs-light.css
+rust/frontend/mermaid.min.js
+rust/frontend/icons/

@@ -11,12 +11,15 @@ const { listen } = window.__TAURI__.event;
 const content = document.getElementById("content");
 const backBtn = document.getElementById("back-btn");
 const findInput = document.getElementById("find-input");
+const findBar = document.getElementById("findbar");
+const findCount = document.getElementById("find-count");
+const reloadBtn = document.getElementById("reload-btn");
 
-// Reveal button label follows the platform, like the other ports.
+// Reveal is an icon now, so the platform wording lives in its tooltip.
 {
   const ua = navigator.userAgent;
   const label = /Mac/.test(ua) ? "Show in Finder" : /Win/.test(ua) ? "Show in Explorer" : "Show in File Manager";
-  document.getElementById("reveal-btn").textContent = label;
+  document.getElementById("reveal-btn").title = label;
 }
 
 let currentDoc = null;
@@ -35,6 +38,7 @@ async function show(path, { recordHistory = true } = {}) {
   }
   if (recordHistory && currentDoc && currentDoc !== path) history.push(currentDoc);
   currentDoc = path;
+  reloadBtn.classList.remove("stale"); // what changed on disk is now on screen
   currentFolder = result.folder;
   backBtn.disabled = history.length === 0;
 
@@ -83,18 +87,130 @@ function goBack() {
   if (prev) show(prev, { recordHistory: false });
 }
 
-// ── find (window.find in the system webview) ─────────────────────────────────
+// ── find ─────────────────────────────────────────────────────────────────────
+//
+// Matches are marked up rather than handed to window.find(). The native call is
+// less code, but it reports only whether it found something - no count, no
+// position - and the Qt ports and the Swift bar both show "3 of 12". Wrapping
+// the hits ourselves is what makes that number available, and it also lets the
+// active hit be coloured differently from the rest.
+
+let hits = [];
+let hitIndex = -1;
+
+function clearHits() {
+  for (const mark of content.querySelectorAll("mark.find-hit")) {
+    const parent = mark.parentNode;
+    parent.replaceChild(document.createTextNode(mark.textContent), mark);
+    parent.normalize(); // rejoin the split text nodes, so a re-search sees whole words
+  }
+  hits = [];
+  hitIndex = -1;
+  findCount.textContent = "";
+}
+
+function markHits(query) {
+  const needle = query.toLowerCase();
+  // Collected first: wrapping a match mutates the tree the walker is walking.
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue.toLowerCase().includes(needle)) return NodeFilter.FILTER_REJECT;
+      // Skip anything whose text is not prose: <script>/<style> content, and
+      // the text inside a rendered mermaid diagram, where replacing nodes would
+      // corrupt the SVG.
+      const tag = node.parentElement?.closest("script, style, svg");
+      return tag ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const targets = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) targets.push(n);
+
+  for (const node of targets) {
+    const text = node.nodeValue;
+    const lower = text.toLowerCase();
+    const frag = document.createDocumentFragment();
+    let at = 0;
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, at)) {
+      if (i > at) frag.appendChild(document.createTextNode(text.slice(at, i)));
+      const mark = document.createElement("mark");
+      mark.className = "find-hit";
+      mark.textContent = text.slice(i, i + needle.length);
+      frag.appendChild(mark);
+      hits.push(mark);
+      at = i + needle.length;
+    }
+    if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
+function showHit(index) {
+  if (!hits.length) {
+    findCount.textContent = "No matches";
+    return;
+  }
+  hits[hitIndex]?.classList.remove("active");
+  hitIndex = (index + hits.length) % hits.length;
+  const mark = hits[hitIndex];
+  mark.classList.add("active");
+  mark.scrollIntoView({ block: "center" });
+  findCount.textContent = `${hitIndex + 1} of ${hits.length}`;
+}
+
+// Re-marks from scratch each time. The documents here are one screenful to a
+// few hundred lines, so the simple thing is fast enough and cannot drift out of
+// step with the text the way an incremental index would.
+function runSearch(query) {
+  clearHits();
+  if (!query) return;
+  markHits(query);
+  showHit(0);
+}
+
+function findText(backwards) {
+  const q = findInput.value;
+  if (!q) {
+    clearHits();
+    return;
+  }
+  if (!hits.length) {
+    runSearch(q);
+    return;
+  }
+  showHit(hitIndex + (backwards ? -1 : 1));
+}
 
 function focusFind() {
+  // ⌘F on an open bar that already has the caret puts it away; on one that does
+  // not, it comes back to it. Same as the Qt ports.
+  if (!findBar.hidden && document.activeElement === findInput) {
+    hideFind();
+    return;
+  }
+  findBar.hidden = false;
   findInput.focus();
   findInput.select();
 }
-function findText(backwards) {
-  const q = findInput.value;
-  if (q) window.find(q, false, backwards, true);
+
+function hideFind() {
+  findBar.hidden = true;
+  clearHits();
 }
+
+findInput.addEventListener("input", () => runSearch(findInput.value));
 findInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") findText(e.shiftKey);
+  if (e.key === "Escape") hideFind();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !findBar.hidden) hideFind();
+});
+
+findBar.addEventListener("click", (e) => {
+  const act = e.target.closest("button")?.dataset.act;
+  if (act === "find-prev") findText(true);
+  if (act === "find-next") findText(false);
+  if (act === "find-close") hideFind();
 });
 
 // ── actions (shared by toolbar buttons and menu events) ──────────────────────
@@ -108,6 +224,7 @@ const actions = {
   "zoom-reset": () => invoke("zoom_view", { direction: 0 }),
   print: () => invoke("print_document"),
   reveal: () => invoke("reveal_document").catch(() => {}),
+  find: focusFind,
 };
 
 document.getElementById("toolbar").addEventListener("click", (e) => {
@@ -138,6 +255,11 @@ listen("find-prev", () => findText(true));
 listen("show-help", showHelp);
 listen("document-changed", (e) => {
   if (e.payload === currentDoc) show(currentDoc, { recordHistory: false });
+});
+// Auto-reload is off and the file moved underneath: accent the reload glyph so
+// there is something to notice, and leave the decision to the reader.
+listen("document-stale", (e) => {
+  if (e.payload === currentDoc) reloadBtn.classList.add("stale");
 });
 
 // ── helpers + startup ────────────────────────────────────────────────────────

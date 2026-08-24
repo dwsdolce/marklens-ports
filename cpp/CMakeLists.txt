@@ -124,7 +124,10 @@ if(NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
     endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets WebEngineCore Test)
+# Svg is here for the toolbar glyphs: QIcon renders an .svg only when the qsvg
+# image-format plugin is present, and linking the module is what gets that
+# plugin deployed into the bundle. Without it the toolbar comes out blank.
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg WebEngineWidgets WebEngineCore Test)
 qt_standard_project_setup()
 
 # --- md4c ------------------------------------------------------------------
@@ -213,7 +216,7 @@ target_compile_definitions(marklens_core PUBLIC
 add_library(marklens_gui STATIC src/mainwindow.cpp src/page.cpp)
 set_target_properties(marklens_gui PROPERTIES AUTOMOC ON)
 target_link_libraries(marklens_gui PUBLIC
-    marklens_core Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebEngineCore
+    marklens_core Qt6::Widgets Qt6::Svg Qt6::WebEngineWidgets Qt6::WebEngineCore
 )
 
 # The three ports install side by side by design, so the shipped name says

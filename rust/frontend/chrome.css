@@ -68,14 +68,43 @@ article#content {
   /* Flat, like the QToolButtons the other two ports get from Qt: no border and
      no fill until hovered. The bordered pill this replaced stood nearly twice
      as tall, which is what pushed the row into wrapping in the first place. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   white-space: nowrap;
   flex: 0 0 auto;
-  padding: 4px 8px;
+  padding: 5px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+/* The glyph is painted as a mask filled with the button's own text colour, so
+   one set of files serves light and dark - the same trick the SVGs' own
+   stroke="currentColor" plays for the Qt ports, which can use them directly.
+   An <img> would render them in their authored colour and go invisible against
+   a dark toolbar. Files come from shared/icons via rust/src-tauri/build.rs. */
+.icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: var(--i) center / contain no-repeat;
+  mask: var(--i) center / contain no-repeat;
+}
+
+/* Pushes everything after it to the right, matching the Swift toolbar, whose
+   items are all primaryAction. */
+#toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Accent the reload glyph when the file changed on disk and auto-reload is off,
+   the analogue of the Swift app's filled reload symbol. */
+#reload-btn.stale {
+  color: #e8952f;
 }
 #toolbar button:hover:not(:disabled) {
   background: rgba(128, 128, 128, 0.16);
@@ -87,23 +116,70 @@ article#content {
   opacity: 0.4;
   cursor: default;
 }
-#toolbar .sep {
+/* The find bar is a second chrome row rather than a field in the toolbar,
+   which is where the Swift app puts it and what leaves room for the match count
+   and the three buttons. It shares the toolbar's font and button styling. */
+#findbar {
   flex: 0 0 auto;
-  width: 1px;
-  height: 18px;
-  background: rgba(128, 128, 128, 0.3);
-  margin: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: Canvas;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font: menu;
 }
-#toolbar #find-input {
-  flex: 0 1 200px;
+#findbar .findbar-glyph {
+  opacity: 0.55;
+  margin: 0 2px 0 4px;
+}
+#findbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+#findbar button:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.16);
+}
+#findbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#find-input {
+  flex: 0 1 240px;
   min-width: 90px;
   font: inherit;
-  margin: 0 4px;
-  padding: 2px 8px;
+  padding: 3px 8px;
   border: 1px solid rgba(128, 128, 128, 0.4);
   border-radius: 6px;
   background: transparent;
   color: inherit;
+}
+#find-count {
+  flex: 0 0 auto;
+  margin: 0 8px;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Search hits. The active one is the accent so it can be picked out of the
+   others while stepping, as the Qt ports' active match is. */
+#content mark.find-hit {
+  background: rgba(255, 213, 0, 0.45);
+  color: inherit;
+}
+#content mark.find-hit.active {
+  background: #e8952f;
+  color: #000;
 }
 
 #help-overlay {

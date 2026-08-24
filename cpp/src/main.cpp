@@ -6,6 +6,8 @@
 #include <QFileOpenEvent>
 #include <QIcon>
 #include <QString>
+#include <QTimer>
+#include <QtGlobal>
 
 namespace {
 
@@ -71,15 +73,35 @@ int main(int argc, char **argv) {
     MainWindow window;
     window.show();
 
+    bool opened = false;
     for (int i = 1; i < argc; ++i) {
         const QString arg = QString::fromLocal8Bit(argv[i]);
         if (!arg.startsWith('-')) {
             window.openPath(arg);
+            opened = true;
             break;
         }
     }
 
     app.setWindow(&window);
+
+    // Nothing named on the command line: pick up where you left off.
+    if (!opened) {
+#if defined(Q_OS_MACOS)
+        // Except that on macOS "nothing named" is also what opening a document
+        // from Finder looks like - the path arrives as an Apple Event once the
+        // event loop is running, not in argv. Reopening immediately would show
+        // the previous document first and push it back to the top of the recent
+        // list, so the fallback waits a moment and stands down if a document
+        // turns up in the meantime.
+        QTimer::singleShot(250, &window, [&window] {
+            if (!window.hasDocument())
+                window.openMostRecent();
+        });
+#else
+        window.openMostRecent();
+#endif
+    }
 
     return app.exec();
 }

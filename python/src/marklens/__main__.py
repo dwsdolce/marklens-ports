@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
@@ -72,6 +72,23 @@ def main() -> int:
         window.open_path(Path(args[0]))
 
     app.set_window(window)
+
+    # Nothing named on the command line: pick up where you left off.
+    if not args:
+        if sys.platform == "darwin":
+            # Except that on macOS "nothing named" is also what opening a
+            # document from Finder looks like - the path arrives as an Apple
+            # Event once the event loop is running, not in argv. Reopening
+            # immediately would show the previous document first and push it
+            # back to the top of the recent list, so the fallback waits a
+            # moment and stands down if a document turns up meanwhile.
+            def reopen_last() -> None:
+                if not window.has_document():
+                    window.open_most_recent()
+
+            QTimer.singleShot(250, reopen_last)
+        else:
+            window.open_most_recent()
 
     return app.exec()
 

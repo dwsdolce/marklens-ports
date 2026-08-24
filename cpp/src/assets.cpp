@@ -74,6 +74,12 @@ QString iconPath() {
     return sharedDir() + QStringLiteral("/icon-cpp.png");
 }
 
+QString iconsDir() {
+    // The toolbar glyphs, shared verbatim with the other two ports so all three
+    // draw the same icons. See shared/icons/ICONS.md.
+    return sharedDir() + QStringLiteral("/icons");
+}
+
 QString helpHtml() {
     const QString shared = sharedDir();
 #if defined(Q_OS_MACOS)

@@ -81,9 +81,23 @@ all seven; neither decodes TIFF.
 - **Find** in page, **zoom** in/out/reset, **export to PDF**, **reveal in the
   system file manager**.
 
+## Launch with no document
+
+Started with no file named on the command line, every port reopens the document
+it last had open: the newest entry in the recent list that still exists. The
+list is walked rather than trusting its head, because entries outlive the files
+they name - renamed, deleted, or on a volume that is not mounted.
+
+macOS complicates this, because a document opened from Finder also arrives with
+nothing on the command line. The path comes later, as an Apple Event, once the
+event loop is running. Reopening at once would show the previous document first
+and push it back to the top of the recent list, so the reopen is deferred
+briefly and stands down if a document turns up in the meantime.
+
 ## Empty state
 
-Launched with no document, every port shows the shared page shell containing:
+With nothing to reopen - a first run, or a list whose every entry has since
+gone - each port shows the shared page shell containing:
 
 ```html
 <p style='opacity:.6;padding:1rem'>Open a Markdown file to view it.</p>

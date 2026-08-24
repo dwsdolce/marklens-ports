@@ -13,18 +13,25 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
+#include <QIcon>
+#include <QLabel>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProcess>
+#include <QPushButton>
+#include <QShortcut>
+#include <QSize>
+#include <QSizePolicy>
 #include <QSet>
 #include <QSettings>
 #include <QTextBrowser>
 #include <QToolBar>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWebEngineFindTextResult>
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -43,6 +50,13 @@ constexpr auto kRevealText = "Show in Explorer";
 #else
 constexpr auto kRevealText = "Show in File Manager";
 #endif
+
+// Toolbar glyphs, from the set shared with the other two ports so all three
+// draw the same icons. They are stroke="currentColor", so they follow the
+// palette and one set covers light and dark. See shared/icons/ICONS.md.
+QIcon icon(const QString &name) {
+    return QIcon(assets::iconsDir() + "/" + name + ".svg");
+}
 } // namespace
 
 MainWindow::MainWindow() {
@@ -81,7 +95,7 @@ void MainWindow::buildUi() {
     };
 
     auto *openAct = make("Open…", &MainWindow::openDialog, QKeySequence::Open);
-    auto *reloadAct = make("Reload", &MainWindow::reload, QKeySequence::Refresh);
+    m_reload = make("Reload", &MainWindow::reload, QKeySequence::Refresh);
     auto *pdfAct = make("Export as PDF…", &MainWindow::exportPdf, QKeySequence("Ctrl+Shift+E"));
     auto *revealAct = make(kRevealText, &MainWindow::reveal);
     auto *closeAct = make("Close", [this] { close(); }, QKeySequence::Close);
@@ -99,11 +113,11 @@ void MainWindow::buildUi() {
     auto *zoomOutAct = make("Zoom Out", [this] { zoom(-1); }, QKeySequence("Ctrl+-"));
     auto *zoomResetAct = make("Actual Size", &MainWindow::zoomReset, QKeySequence("Ctrl+0"));
 
-    // Find focuses the toolbar's search field (created below).
-    auto *findAct = make(
-        "Find…", [this] { m_find->setFocus(); m_find->selectAll(); }, QKeySequence::Find);
-    auto *findNextAct = make("Find Next", &MainWindow::findNext, QKeySequence::FindNext);
-    auto *findPrevAct = make("Find Previous", &MainWindow::findPrevious, QKeySequence::FindPrevious);
+    // Find shows the find bar (created below) and puts the caret in it.
+    auto *findAct = make("Find…", &MainWindow::toggleFind, QKeySequence::Find);
+    auto *findNextAct = make("Find Next", [this] { findText(false); }, QKeySequence::FindNext);
+    auto *findPrevAct =
+        make("Find Previous", [this] { findText(true); }, QKeySequence::FindPrevious);
 
     auto *helpAct = make("Marklens Help", &MainWindow::showHelp, QKeySequence::HelpContents);
     auto *aboutAct = make("About Marklens", &MainWindow::showAbout);
@@ -114,7 +128,7 @@ void MainWindow::buildUi() {
     fileMenu->addAction(openAct);
     m_recentMenu = fileMenu->addMenu("Open Recent");
     rebuildRecentMenu();
-    fileMenu->addAction(reloadAct);
+    fileMenu->addAction(m_reload);
     fileMenu->addAction(autoReloadAct);
     fileMenu->addSeparator();
     fileMenu->addAction(pdfAct);
@@ -142,27 +156,46 @@ void MainWindow::buildUi() {
     helpMenu->addAction(helpAct);
     helpMenu->addAction(aboutAct);
 
-    // --- toolbar (a subset, for quick access) ---
+    // --- toolbar ---
+    // Icons rather than labels, in the Swift app's order, pushed to the right
+    // as its toolbar items are. The document name is not repeated here: Swift
+    // shows it as the title bar's proxy icon, which Qt 6 cannot reproduce
+    // (setUnifiedTitleAndToolBarOnMac is gone), and the window title already
+    // carries it.
+    //
+    // Open is deliberately absent, as it is in the Swift toolbar - a document
+    // app opens documents through File ▸ Open and the Open Recent menu.
+    // Back is deliberately present, though that toolbar has none: Swift opens a
+    // link in a new window, while all three ports here replace the document in
+    // place and so need a way back. Its glyph is the one Swift uses for exactly
+    // that button on iOS, where the same thing happens.
     auto *tb = addToolBar("Main");
     tb->setMovable(false);
-    tb->addAction(openAct);
+    tb->setIconSize(QSize(18, 18));
+
+    auto *spacer = new QWidget(this);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
+
+    m_back->setIcon(icon("back"));
+    findAct->setIcon(icon("find"));
+    zoomOutAct->setIcon(icon("zoom-out"));
+    zoomInAct->setIcon(icon("zoom-in"));
+    zoomResetAct->setIcon(icon("actual-size"));
+    pdfAct->setIcon(icon("export"));
+    revealAct->setIcon(icon("reveal"));
+    m_reload->setIcon(icon("reload"));
+
     tb->addAction(m_back);
-    tb->addAction(reloadAct);
-    tb->addSeparator();
+    tb->addAction(findAct);
     tb->addAction(zoomOutAct);
     tb->addAction(zoomInAct);
     tb->addAction(zoomResetAct);
-    tb->addSeparator();
-
-    m_find = new QLineEdit(this);
-    m_find->setPlaceholderText("Find…");
-    m_find->setMaximumWidth(200);
-    connect(m_find, &QLineEdit::returnPressed, this, &MainWindow::find);
-    tb->addWidget(m_find);
-
-    tb->addSeparator();
     tb->addAction(pdfAct);
     tb->addAction(revealAct);
+    tb->addAction(m_reload);
+
+    buildFindBar();
 
     render(); // nothing open yet, so this puts up the empty state
 }
@@ -262,6 +295,20 @@ QStringList loadRecent() {
 
 } // namespace
 
+// Reopen the document last looked at, which is what the Swift app does and
+// what the recent list is already there to remember. The list outlives the
+// files in it - renamed, deleted, on a volume that is not mounted - so it is
+// walked until something opens rather than trusting the first entry.
+bool MainWindow::openMostRecent() {
+    for (const QString &path : loadRecent()) {
+        if (QFileInfo::exists(path)) {
+            openPath(path);
+            return true;
+        }
+    }
+    return false;
+}
+
 void MainWindow::addRecent(const QString &path) {
     const QString canonical = canonicalRecent(path);
     const QString key = recentKey(canonical);
@@ -318,6 +365,7 @@ void MainWindow::render() {
     const QUrl base = QUrl::fromLocalFile(QFileInfo(m_current).absolutePath() + "/");
     m_view->setHtml(html, base);
     setWindowTitle(QFileInfo(m_current).fileName() + " — Marklens");
+    setStale(false); // whatever changed on disk is now on screen
 }
 
 void MainWindow::reload() { render(); }
@@ -341,8 +389,12 @@ void MainWindow::onFileChanged(const QString &changed) {
     // the Swift kqueue re-arm, then re-render.
     if (QFileInfo::exists(changed) && !m_watcher->files().contains(changed))
         m_watcher->addPath(changed);
-    if (m_autoReload && changed == m_current)
+    if (changed != m_current)
+        return;
+    if (m_autoReload)
         render();
+    else
+        setStale(true); // badge the reload glyph; the user decides when
 }
 
 void MainWindow::openDialog() {
@@ -359,12 +411,101 @@ void MainWindow::zoom(int direction) {
 
 void MainWindow::zoomReset() { m_view->setZoomFactor(1.0); }
 
-void MainWindow::find() { m_view->findText(m_find->text()); }
+// A bar of its own below the toolbar, rather than a field inside it. That is
+// where the Swift app puts it, and it leaves room for the match count and the
+// previous/next/close buttons that a toolbar field had nowhere to show.
+void MainWindow::buildFindBar() {
+    m_findBar = new QToolBar("Find", this);
+    m_findBar->setMovable(false);
+    addToolBarBreak();
+    addToolBar(m_findBar);
 
-void MainWindow::findNext() { m_view->findText(m_find->text()); }
+    auto *glyph = new QLabel(this);
+    glyph->setPixmap(icon("find").pixmap(16, 16));
+    glyph->setContentsMargins(6, 0, 2, 0);
+    m_findBar->addWidget(glyph);
 
-void MainWindow::findPrevious() {
-    m_view->findText(m_find->text(), QWebEnginePage::FindBackward);
+    m_find = new QLineEdit(this);
+    m_find->setPlaceholderText("Find");
+    m_find->setClearButtonEnabled(true);
+    m_find->setMaximumWidth(240);
+    // Searching as you type, as the Swift bar does; Return steps to the next.
+    connect(m_find, &QLineEdit::textChanged, this, [this] { findText(false); });
+    connect(m_find, &QLineEdit::returnPressed, this, [this] { findText(false); });
+    m_findBar->addWidget(m_find);
+
+    m_findCount = new QLabel(this);
+    m_findCount->setEnabled(false); // reads as secondary text in every style
+    m_findCount->setContentsMargins(6, 0, 6, 0);
+    m_findBar->addWidget(m_findCount);
+
+    auto button = [this](const QString &name, const QString &tip, auto slot) {
+        auto *b = new QPushButton(icon(name), {}, this);
+        b->setFlat(true);
+        b->setToolTip(tip);
+        b->setFixedWidth(28);
+        connect(b, &QPushButton::clicked, this, slot);
+        m_findBar->addWidget(b);
+    };
+    button("find-prev", "Previous match", [this] { findText(true); });
+    button("find-next", "Next match", [this] { findText(false); });
+    button("close", "Close find bar", [this] { hideFind(); });
+
+    m_findBar->hide();
+
+    // Escape closes it, as in the Swift bar.
+    auto *esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(esc, &QShortcut::activated, this, [this] {
+        if (m_findBar->isVisible())
+            hideFind();
+    });
+}
+
+void MainWindow::toggleFind() {
+    // Cmd+F on an open bar that already has the caret means "put it away";
+    // on an open bar that does not, it means "come back to it".
+    if (m_findBar->isVisible() && m_find->hasFocus()) {
+        hideFind();
+        return;
+    }
+    m_findBar->show();
+    m_find->setFocus();
+    m_find->selectAll();
+}
+
+void MainWindow::hideFind() {
+    m_findBar->hide();
+    m_view->findText({}); // drops the highlight
+    m_findCount->clear();
+    m_view->setFocus();
+}
+
+void MainWindow::findText(bool backward) {
+    const QString needle = m_find->text();
+    if (needle.isEmpty()) {
+        m_view->findText({});
+        m_findCount->clear();
+        return;
+    }
+    QWebEnginePage::FindFlags flags;
+    if (backward)
+        flags |= QWebEnginePage::FindBackward;
+    // The count comes back asynchronously, so the label is filled in from the
+    // callback rather than alongside the search.
+    m_view->findText(needle, flags, [this](const QWebEngineFindTextResult &r) {
+        m_findCount->setText(r.numberOfMatches()
+                                 ? QString("%1 of %2").arg(r.activeMatch()).arg(r.numberOfMatches())
+                                 : QStringLiteral("No matches"));
+    });
+}
+
+// The Swift app fills in its reload glyph when the file has changed underneath
+// and auto-reload is off, so there is something to notice before acting on it.
+void MainWindow::setStale(bool stale) {
+    if (m_stale == stale)
+        return;
+    m_stale = stale;
+    m_reload->setIcon(icon(stale ? "reload-alert" : "reload"));
 }
 
 void MainWindow::exportPdf() {

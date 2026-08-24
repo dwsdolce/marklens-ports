@@ -16,6 +16,7 @@ QString sharedDir();    // filesystem path to shared/
 QString webDir();       // filesystem path to shared/web
 QString assetBaseUrl(); // file:// URL of shared/web, for the page shell
 QString iconPath();     // filesystem path to the application icon
+QString iconsDir();     // filesystem path to shared/icons
 
 // The shared help document with the OS-specific "set as default" steps
 // substituted in for the current platform.

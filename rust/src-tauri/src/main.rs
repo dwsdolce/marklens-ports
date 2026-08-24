@@ -99,8 +99,13 @@ fn watch_document(app: AppHandle, state: State<AppState>, path: String) -> Resul
                 EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
             );
             let auto = *emit_to.state::<AppState>().auto_reload.lock().unwrap();
-            if ours && changed && auto {
-                let _ = emit_to.emit("document-changed", &changed_path);
+            if ours && changed {
+                // With auto-reload off the change is still worth reporting, so
+                // the toolbar can badge its reload glyph the way the Qt ports
+                // and the Swift app do. Silence would leave the window showing
+                // stale text with nothing to say so.
+                let event = if auto { "document-changed" } else { "document-stale" };
+                let _ = emit_to.emit(event, &changed_path);
             }
         }
     })
@@ -486,7 +491,23 @@ fn main() {
             help_html
         ])
         .setup(|app| {
-            build_menu(app.handle())?;
+            let handle = app.handle();
+            build_menu(handle)?;
+
+            // Nothing named on the command line: pick up where you left off,
+            // as the Swift app does. The stored list outlives the files in it -
+            // renamed, deleted, on a volume that is not mounted - so it is
+            // walked until one still exists; finding none leaves the empty
+            // state up. A document opened from Finder arrives later as
+            // RunEvent::Opened and replaces this.
+            let state = handle.state::<AppState>();
+            let mut initial = state.initial.lock().unwrap();
+            if initial.is_none() {
+                *initial = load_recent(handle)
+                    .into_iter()
+                    .find(|p| std::path::Path::new(p).exists());
+            }
+            drop(initial);
             Ok(())
         })
         .on_menu_event(|app, event| handle_menu(app, event.id().0.as_str()))
@@ -508,16 +529,14 @@ fn main() {
                 return;
             };
             let path = path.to_string_lossy().into_owned();
-            let state = app.state::<AppState>();
-            // `current` is only set once the frontend has rendered something.
-            // Empty means the document is what launched the app and the
-            // frontend has yet to ask for its initial document, so leave the
-            // path there for it to collect; emitting now would be shouting at a
-            // page that is not listening.
-            if state.current.lock().unwrap().is_none() {
-                *state.initial.lock().unwrap() = Some(path);
-            } else {
-                let _ = app.emit("open-file", path);
-            }
+            // Both routes, because which one lands depends on how far the
+            // frontend has got. It registers its open-file listener before it
+            // asks for the initial document, so an event that arrives after the
+            // page is up is heard; one that arrives before it loads is not, and
+            // is collected from `initial` instead. Setting both also displaces
+            // the most-recent document seeded during setup, which would
+            // otherwise be what a Finder-launched window rendered.
+            *app.state::<AppState>().initial.lock().unwrap() = Some(path.clone());
+            let _ = app.emit("open-file", path);
         });
 }

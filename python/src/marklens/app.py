@@ -13,20 +13,38 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QSettings, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+from PySide6.QtCore import QFileSystemWatcher, QSettings, QSize, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
+from PySide6.QtWebEngineCore import (
+    QWebEngineFindTextResult,
+    QWebEnginePage,
+    QWebEngineSettings,
+)
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
+    QPushButton,
+    QSizePolicy,
     QToolBar,
+    QWidget,
 )
 
 from . import assets, links, renderer
 
 _MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdown", ".mkd", ".txt"}
+
+
+def _icon(name: str) -> QIcon:
+    """A toolbar glyph from the set shared with the other two ports.
+
+    They are ``stroke="currentColor"``, so they follow the palette and one set
+    covers light and dark. See ``shared/icons/ICONS.md``.
+    """
+    return QIcon(str(assets.icons_dir() / f"{name}.svg"))
+
 
 #: Shown when no document is open. The ports are ordinary single-window apps and
 #: can be launched with no file, which the SwiftUI original never could - it was
@@ -105,6 +123,7 @@ class MainWindow(QMainWindow):
         self._history: list[Path] = []
         self._current: Path | None = None
         self._auto_reload = True
+        self._stale = False
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._on_file_changed)
 
@@ -191,27 +210,117 @@ class MainWindow(QMainWindow):
         help_menu = bar.addMenu("Help")
         help_menu.addActions([help_act, about_act])
 
-        # --- toolbar (a subset, for quick access) ---
+        # --- toolbar ---
+        # Icons rather than labels, in the Swift app's order, pushed to the
+        # right as its toolbar items are. The document name is not repeated
+        # here: Swift shows it as the title bar's proxy icon, which Qt cannot
+        # reproduce, and the window title already carries it.
+        #
+        # Open is deliberately absent, as it is in the Swift toolbar - a
+        # document app opens documents through File ▸ Open and Open Recent.
+        # Back is deliberately present, though that toolbar has none: Swift
+        # opens a link in a new window, while all three ports here replace the
+        # document in place and so need a way back. Its glyph is the one Swift
+        # uses for exactly that button on iOS, where the same thing happens.
+        self._reload_action = reload_act
         tb = QToolBar("Main", self)
         tb.setMovable(False)
+        tb.setIconSize(QSize(18, 18))
         self.addToolBar(tb)
-        tb.addActions([open_act, self._back_action, reload_act])
-        tb.addSeparator()
-        tb.addActions([zoom_out, zoom_in, zoom_reset])
-        tb.addSeparator()
+
+        spacer = QWidget(self)
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        tb.addWidget(spacer)
+
+        self._back_action.setIcon(_icon("back"))
+        find_act.setIcon(_icon("find"))
+        zoom_out.setIcon(_icon("zoom-out"))
+        zoom_in.setIcon(_icon("zoom-in"))
+        zoom_reset.setIcon(_icon("actual-size"))
+        pdf_act.setIcon(_icon("export"))
+        reveal_act.setIcon(_icon("reveal"))
+        reload_act.setIcon(_icon("reload"))
+
+        tb.addActions([self._back_action, find_act, zoom_out, zoom_in, zoom_reset,
+                       pdf_act, reveal_act, reload_act])
+
+        self._build_find_bar()
+
+    def _build_find_bar(self) -> None:
+        """A bar of its own below the toolbar, rather than a field inside it.
+
+        That is where the Swift app puts it, and it leaves room for the match
+        count and the previous/next/close buttons a toolbar field had nowhere
+        to show.
+        """
+        self._find_bar = QToolBar("Find", self)
+        self._find_bar.setMovable(False)
+        self.addToolBarBreak()
+        self.addToolBar(self._find_bar)
+
+        glyph = QLabel(self)
+        glyph.setPixmap(_icon("find").pixmap(16, 16))
+        glyph.setContentsMargins(6, 0, 2, 0)
+        self._find_bar.addWidget(glyph)
 
         self._find_input = QLineEdit(self)
-        self._find_input.setPlaceholderText("Find…")
-        self._find_input.setMaximumWidth(200)
-        self._find_input.returnPressed.connect(self._find)
-        tb.addWidget(self._find_input)
+        self._find_input.setPlaceholderText("Find")
+        self._find_input.setClearButtonEnabled(True)
+        self._find_input.setMaximumWidth(240)
+        # Searching as you type, as the Swift bar does; Return steps to the next.
+        self._find_input.textChanged.connect(lambda _: self._find_text(False))
+        self._find_input.returnPressed.connect(lambda: self._find_text(False))
+        self._find_bar.addWidget(self._find_input)
 
-        tb.addSeparator()
-        tb.addActions([pdf_act, reveal_act])
+        self._find_count = QLabel(self)
+        self._find_count.setEnabled(False)  # reads as secondary text in every style
+        self._find_count.setContentsMargins(6, 0, 6, 0)
+        self._find_bar.addWidget(self._find_count)
+
+        def button(name: str, tip: str, slot) -> None:
+            b = QPushButton(_icon(name), "", self)
+            b.setFlat(True)
+            b.setToolTip(tip)
+            b.setFixedWidth(28)
+            b.clicked.connect(slot)
+            self._find_bar.addWidget(b)
+
+        button("find-prev", "Previous match", lambda: self._find_text(True))
+        button("find-next", "Next match", lambda: self._find_text(False))
+        button("close", "Close find bar", self._hide_find)
+
+        self._find_bar.hide()
+
+        # Escape closes it, as in the Swift bar.
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.activated.connect(lambda: self._hide_find() if self._find_bar.isVisible() else None)
 
     def _focus_find(self) -> None:
+        # Cmd+F on an open bar that already has the caret means "put it away";
+        # on an open bar that does not, it means "come back to it".
+        if self._find_bar.isVisible() and self._find_input.hasFocus():
+            self._hide_find()
+            return
+        self._find_bar.show()
         self._find_input.setFocus()
         self._find_input.selectAll()
+
+    def _hide_find(self) -> None:
+        self._find_bar.hide()
+        self._view.findText("")  # drops the highlight
+        self._find_count.clear()
+        self._view.setFocus()
+
+    def _set_stale(self, stale: bool) -> None:
+        """Badge the reload glyph when the file changed and auto-reload is off.
+
+        The Swift app fills in its reload symbol in the same situation, so there
+        is something to notice before acting on it.
+        """
+        if self._stale == stale:
+            return
+        self._stale = stale
+        self._reload_action.setIcon(_icon("reload-alert" if stale else "reload"))
 
     def _toggle_zoom(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()
@@ -260,6 +369,24 @@ class MainWindow(QMainWindow):
                 seen.add(key)
                 recent.append(canonical)
         return recent
+
+    def open_most_recent(self) -> bool:
+        """Reopen the document last looked at.
+
+        What the Swift app does, and what the recent list is already there to
+        remember. The list outlives the files in it - renamed, deleted, on a
+        volume that is not mounted - so it is walked until something opens
+        rather than trusting the first entry. False leaves the empty state up.
+        """
+        for entry in self._load_recent():
+            path = Path(entry)
+            if path.exists():
+                self.open_path(path)
+                return True
+        return False
+
+    def has_document(self) -> bool:
+        return self._current is not None
 
     def _add_recent(self, path: Path) -> None:
         canonical = self._canonical_recent(path)
@@ -353,6 +480,7 @@ class MainWindow(QMainWindow):
         base = QUrl.fromLocalFile(str(self._current.parent) + "/")
         self._view.setHtml(html, base)
         self.setWindowTitle(f"{self._current.name} — Marklens")
+        self._set_stale(False)  # whatever changed on disk is now on screen
 
     def _reload(self) -> None:
         self._render()
@@ -377,8 +505,12 @@ class MainWindow(QMainWindow):
         # Swift kqueue re-arm: re-add the path, then re-render.
         if Path(changed).exists() and changed not in self._watcher.files():
             self._watcher.addPath(changed)
-        if self._auto_reload and self._current and str(self._current) == changed:
+        if not self._current or str(self._current) != changed:
+            return
+        if self._auto_reload:
             self._render()
+        else:
+            self._set_stale(True)  # badge the reload glyph; the user decides when
 
     # ── toolbar actions ──────────────────────────────────────────────────────
 
@@ -397,14 +529,27 @@ class MainWindow(QMainWindow):
     def _zoom_reset(self) -> None:
         self._view.setZoomFactor(1.0)
 
-    def _find(self) -> None:
-        self._view.findText(self._find_input.text())
+    def _find_text(self, backward: bool) -> None:
+        needle = self._find_input.text()
+        if not needle:
+            self._view.findText("")
+            self._find_count.clear()
+            return
+        flags = QWebEnginePage.FindFlag.FindBackward if backward else QWebEnginePage.FindFlag(0)
+
+        # The count comes back asynchronously, so the label is filled in from
+        # the callback rather than alongside the search.
+        def show(result: QWebEngineFindTextResult) -> None:
+            n = result.numberOfMatches()
+            self._find_count.setText(f"{result.activeMatch()} of {n}" if n else "No matches")
+
+        self._view.findText(needle, flags, show)
 
     def _find_next(self) -> None:
-        self._view.findText(self._find_input.text())
+        self._find_text(False)
 
     def _find_prev(self) -> None:
-        self._view.findText(self._find_input.text(), QWebEnginePage.FindFlag.FindBackward)
+        self._find_text(True)
 
     def _set_auto_reload(self, enabled: bool) -> None:
         self._auto_reload = enabled
