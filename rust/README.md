@@ -82,11 +82,19 @@ signing.
 
 ## Notes
 
-- **No headless GUI test.** Tauri uses the OS webview, which has no offscreen
-  mode, so the render/navigation smoke tests the Qt ports have can't be
-  replicated here — visual checks are manual.
+- **No GUI test.** The Qt ports drive a real window and assert that a document
+  rendered; this port has only the shared fixtures. Tauri has no offscreen mode,
+  so such a test would have to use a real window — but that is not what stops
+  it. The obstacle is that `lib.rs` holds only the renderer and link resolver,
+  while the window, menus and commands live in the binary, where no test can
+  link them. C++ keeps its window code in a library, `marklens_gui`, for exactly
+  this reason. See the Testing section of `../shared/spec/SPEC.md`.
 - No sandbox, but the webview runs from `tauri://localhost`, so relative images
   can't load as `file://`. The frontend rewrites relative `<img src>` to the
   asset protocol via `convertFileSrc` (enabled + scoped in `tauri.conf.json`).
-- `frontend/` has copies of the shared web assets (styles, highlight.js,
-  mermaid.js) so Tauri can bundle `frontendDist`.
+- `frontend/` needs the shared web assets and toolbar icons inside it, because
+  that is what Tauri bundles as `frontendDist`. They are **copied in by
+  `build.rs` on every build** and gitignored, rather than committed a second
+  time: the originals live in `shared/`, where the other two ports read them,
+  and deriving them is what stops the two drifting. Only `index.html`,
+  `chrome.css` and `main.js` are this port's own.

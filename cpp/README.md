@@ -158,6 +158,28 @@ Linux is the odd one out because **Qt ships no `linuxdeployqt`**. `linuxdeploy`
 is a third-party tool, and Qt awareness is a *plugin* for it — hence two files,
 not one.
 
+#### macOS: `scripts/fix_bundle_deps.sh`
+
+`macdeployqt` leaves two things wrong when Qt comes from Homebrew, and
+`build_mac` runs this script afterwards to repair both. Neither shows up until
+you open a document in a copy of the app on a machine without Qt, which is why
+it exists as a separate, re-runnable script rather than a step buried in the
+build.
+
+Homebrew splits Qt across many kegs — qtbase, qtdeclarative, qtwebengine — and
+`macdeployqt` does not rewrite every cross-keg reference, so parts of the bundle
+still load `/opt/homebrew` paths. It also writes some dependencies as
+`@executable_path/../Frameworks/…`, which resolves for the main executable and
+not at all for `QtWebEngineProcess`, whose `@executable_path` is its own
+directory inside the helper bundle. The helper then dies in dyld, and since the
+window still opens, the only symptom is that no document ever renders. Both are
+rewritten to `@rpath`, which works for either.
+
+Rewriting load commands invalidates code signatures, so `build_mac` re-signs the
+bundle inside-out afterwards. The script signs ad-hoc only when no
+`CODESIGN_IDENTITY` is set, leaving a real identity to the caller — see
+[../packaging/README.md](../packaging/README.md).
+
 **`packaging/setup` downloads both for you**, into `packaging/tools/` at the
 repository root. They are single-file AppImages behind a plain HTTPS download —
 no account, no root, no installer — which puts them in the same class as md4c,

@@ -16,6 +16,13 @@ shared/
   web/              Frontend assets, identical across all ports (copied from
                     the Swift app): styles.css, highlight.min.js,
                     mermaid.min.js, hljs-{light,dark}.css
+  icons/            Toolbar glyphs, identical across all ports — open
+                    look-alikes for the original's SF Symbols, which are
+                    Apple-platform-only; see icons/ICONS.md
+  icon*.{svg,png,ico,icns}
+                    The application icon, and the per-port badged variants
+                    tools/make_icons.py generates from it
+  licenses/         Licence texts the Linux packages have to carry
   spec/
     SPEC.md         The behavior contract
     fixtures/       Executable contract — each port loads these into its own
@@ -23,9 +30,9 @@ shared/
                       render_cases.json   markdown -> HTML substring assertions
                       link_cases.json     (href, doc) -> resolved path
     sample/         A document exercising every path, for manual GUI testing
-python/             Phase 1 — PySide6
-cpp/                Phase 2 — Qt Widgets
-rust/               Phase 3 — Tauri
+python/             The PySide6 port
+cpp/                The Qt Widgets port
+rust/               The Tauri port
 packaging/          Bits the three ports' installers share, plus the how-to
 tools/              Version stamping and icon generation
 ```
@@ -51,32 +58,43 @@ They install side by side on purpose — `Marklens Python`, `Marklens C++` and
 you can run all three at once and compare. See
 [packaging/README.md](packaging/README.md).
 
-## Status
+## The three ports
 
-- [x] Phase 0 — shared foundation (assets, spec, fixtures, sample)
-- [x] Phase 1 — Python/PySide6 (ruff+mypy clean, 34 tests, smoke passes)
-- [x] Phase 2 — C++/Qt (25/25 fixture rows, smoke passes; md4c engine)
-- [x] Phase 3 — Rust/Tauri (core fixtures pass; comrak engine; app launches —
-      visual GUI check is manual, Tauri has no headless webview)
-- [x] Phase 4 — packaging and installers for all three
-      (see [packaging/README.md](packaging/README.md))
+All three are complete and behave the same. Where they differ is underneath,
+which is the point of the exercise:
+
+| | [python/](python/) | [cpp/](cpp/) | [rust/](rust/) |
+|---|---|---|---|
+| Toolkit | PySide6 (Qt 6) | Qt 6 Widgets | Tauri 2 |
+| Needs | Python ≥ 3.12 | CMake ≥ 3.19, Qt 6 + WebEngine | Rust ≥ 1.85 |
+| Markdown engine | markdown-it-py | md4c | comrak |
+| Webview | QtWebEngine (bundled Chromium) | QtWebEngine (bundled Chromium) | the OS webview — WKWebView, WebView2, WebKitGTK |
+| Installer built by | PyInstaller | CMake + deploy tools | Tauri's bundler |
+| Tests | fixtures, GUI smoke, navigation | fixtures, GUI smoke, navigation | fixtures only ([why](#known-issues)) |
+
+The webview row is the interesting one: the Qt ports carry their own Chromium
+and so render identically everywhere, while the Rust port uses whatever the
+platform provides and is therefore the smallest download and the least
+predictable — it renders a different set of image formats on each OS.
+
+Each port has its own README covering setup, running, testing and packaging;
+they share the same four verbs and the same script names.
 
 ## Known issues
 
-Nothing here is a regression. The three ports have been eyeballed side by side
-on Windows and match; what remains is two deliberate divergences and one
-platform nobody has run.
+Nothing here is a regression. All three ports build, install and run on
+Windows, Linux and macOS, and have been eyeballed side by side on each; the
+macOS builds are signed, notarised and stapled. What remains is two deliberate
+divergences and one gap in the tests.
 
-- **The packaging has never been run on macOS.** The three ports themselves
-  were developed and run there — that is what the initial commit is — but none
-  of the packaging was. Windows and Linux are both exercised now: all three
-  ports build, install and run from a `.deb` on Linux, with `.rpm`s built and
-  checked but not installed anywhere. What remains untried is `build_mac`,
-  `run_mac` and `test_mac` for all three ports, and with them `macdeployqt` and
-  `create-dmg`. The C++ port's md4c handling is another branch nobody has
-  taken: a system md4c from Homebrew should be found ahead of the copy
-  `setup` clones into `third_party/`, and on Linux it was the clone that got
-  used, so that path is still unexercised on both.
+- **The Rust port has no GUI test.** The Qt ports each drive a real window and
+  assert that a document rendered — that the image loaded, mermaid drew, code
+  highlighted, a link navigated. Rust has only the shared fixtures. The
+  obstacle is structural: its window code lives in the binary, where nothing
+  can link it, rather than in a library as the C++ port's does. That layer is
+  what catches "the window opened but nothing rendered", which is how the worst
+  bugs here have presented. See the Testing section of
+  [shared/spec/SPEC.md](shared/spec/SPEC.md).
 
 - **Recent files are shared between the Qt ports but not with Rust.** The C++
   and Python ports both use `QSettings` under `Marklens/Marklens`, so they
@@ -123,6 +141,7 @@ Qt is the only one carrying an obligation worth knowing about.
 | [notify](https://github.com/notify-rs/notify) | Rust | CC0-1.0 |
 | [highlight.js](https://highlightjs.org) | all three | BSD-3-Clause |
 | [Mermaid](https://mermaid.js.org) | all three | MIT |
+| [Lucide](https://lucide.dev) (toolbar icons) | all three | ISC |
 
 **Qt is LGPL-3.0, not GPL**, which is why these ports need not adopt its
 license: LGPL requires only that a user be able to relink the application
