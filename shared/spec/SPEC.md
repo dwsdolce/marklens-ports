@@ -212,3 +212,20 @@ not seize the screen on every build, but they assert on the DOM rather than on
 pixels, so a real window would satisfy them equally. Tauri has no offscreen mode
 at all, so a Rust GUI test would necessarily use a real window - a reason to
 write one, not a reason not to.
+
+## Outstanding
+
+Known gaps, kept here rather than in a port's README because each one is about
+all three ports at once. None is a defect in behaviour; the contract above is
+met everywhere.
+
+- **No screenshots.** A viewer is a visual program and the README asks the
+  reader to take its word for it. To be captured on Windows, not macOS, so the
+  three ports appear as a user of the most common platform would meet them.
+- **No CI.** Each port's suite runs on demand and nothing runs them together.
+  The Qt suites are already headless for exactly this reason, so the obstacle
+  is only the runner setup. Worth having for a repository whose whole claim is
+  that three implementations agree - and for catching a stale build artefact,
+  which has produced a false pass here before.
+- **The Rust port has no GUI test.** See Testing above; the obstacle is
+  structural rather than a missing file.
