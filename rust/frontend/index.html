@@ -27,15 +27,24 @@
        in a new window, while all three ports here replace the document in place
        and so need a way back. -->
   <div id="toolbar">
+    <!-- The document's name, with a menu listing its path. On macOS that is
+         what the title-bar proxy icon does; Windows and Linux have no such
+         thing, so it is drawn here and every platform gets it in the same
+         place - as it is in the Qt ports. -->
+    <button id="doc-btn" hidden>
+      <span class="icon" style="--i:url('icons/document.svg')"></span>
+      <span id="doc-name"></span>
+      <span class="caret">&#x25BE;</span>
+    </button>
     <span id="toolbar-spacer"></span>
-    <button data-act="back" id="back-btn" title="Back (⌘[)" disabled><span class="icon" style="--i:url('icons/back.svg')"></span></button>
-    <button data-act="find" title="Find (⌘F)"><span class="icon" style="--i:url('icons/find.svg')"></span></button>
-    <button data-act="zoom-out" title="Zoom Out (⌘−)"><span class="icon" style="--i:url('icons/zoom-out.svg')"></span></button>
-    <button data-act="zoom-in" title="Zoom In (⌘=)"><span class="icon" style="--i:url('icons/zoom-in.svg')"></span></button>
-    <button data-act="zoom-reset" title="Actual Size (⌘0)"><span class="icon" style="--i:url('icons/actual-size.svg')"></span></button>
-    <button data-act="print" title="Export as PDF (⌘⇧E)"><span class="icon" style="--i:url('icons/export.svg')"></span></button>
-    <button data-act="reveal" id="reveal-btn"><span class="icon" style="--i:url('icons/reveal.svg')"></span></button>
-    <button data-act="reload" id="reload-btn" title="Reload (⌘R)"><span class="icon" style="--i:url('icons/reload.svg')"></span></button>
+    <button data-act="back" id="back-btn" title="Back (⌘[)" disabled><span class="icon" style="--i:url('icons/back.svg')"></span><span class="label">Back</span></button>
+    <button data-act="find" title="Find (⌘F)"><span class="icon" style="--i:url('icons/find.svg')"></span><span class="label">Find</span></button>
+    <button data-act="zoom-out" title="Zoom Out (⌘−)"><span class="icon" style="--i:url('icons/zoom-out.svg')"></span><span class="label">Zoom Out</span></button>
+    <button data-act="zoom-in" title="Zoom In (⌘=)"><span class="icon" style="--i:url('icons/zoom-in.svg')"></span><span class="label">Zoom In</span></button>
+    <button data-act="zoom-reset" title="Actual Size (⌘0)"><span class="icon" style="--i:url('icons/actual-size.svg')"></span><span class="label">Actual Size</span></button>
+    <button data-act="print" title="Export as PDF (⌘⇧E)"><span class="icon" style="--i:url('icons/export.svg')"></span><span class="label">Export as PDF…</span></button>
+    <button data-act="reveal" id="reveal-btn"><span class="icon" style="--i:url('icons/reveal.svg')"></span><span class="label">Show in Finder</span></button>
+    <button data-act="reload" id="reload-btn" title="Reload (⌘R)"><span class="icon" style="--i:url('icons/reload.svg')"></span><span class="label">Reload</span></button>
   </div>
 
   <!-- A bar of its own below the toolbar, as in the Swift app, with room for
@@ -48,6 +57,11 @@
     <button data-act="find-next" title="Next match"><span class="icon" style="--i:url('icons/find-next.svg')"></span></button>
     <button data-act="find-close" title="Close find bar"><span class="icon" style="--i:url('icons/close.svg')"></span></button>
   </div>
+
+  <!-- Both populated on demand: the path menu from the open document, the
+       context menu from whatever was right-clicked. -->
+  <div id="path-menu" class="popup-menu" hidden></div>
+  <div id="context-menu" class="popup-menu" hidden></div>
 
   <article id="content"></article>
 

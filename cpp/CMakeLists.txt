@@ -210,6 +210,9 @@ target_compile_definitions(marklens_core PUBLIC
     MARKLENS_SHARED_DIR="${SHARED_DIR}"
     MARKLENS_VERSION="${MARKLENS_BASE_VERSION}"
     MARKLENS_BUILD="${MARKLENS_BUILD}"
+    # The name shown in the title bar. Not MARKLENS_APP_NAME, which is the
+    # executable/bundle name and is lowercased off macOS.
+    MARKLENS_DISPLAY_NAME="Marklens C++"
 )
 
 # --- GUI: window + page, shared by the app and the nav test ----------------

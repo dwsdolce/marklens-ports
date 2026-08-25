@@ -8,6 +8,7 @@ ports so they render identically.
 | File | Function | Swift SF Symbol | Source |
 |---|---|---|---|
 | back.svg | Back to Previous Document | arrow.uturn.backward | Lucide `undo-2` |
+| document.svg | Document name / path menu | doc (title-bar proxy) | Lucide `file-text` |
 | find.svg | Find | magnifyingglass | Lucide `search` |
 | zoom-out.svg | Zoom Out | minus.magnifyingglass | Lucide `zoom-out` |
 | zoom-in.svg | Zoom In | plus.magnifyingglass | Lucide `zoom-in` |
@@ -33,3 +34,9 @@ that stops reading as reload at all.
 `back` has no counterpart in the Swift app's macOS toolbar, which opens links in
 new windows and so never needs it. It is taken from the iOS toolbar, where a
 link replaces the document in place exactly as it does in all three ports here.
+
+`document` fronts the toolbar's document name, whose menu lists the file and
+each enclosing folder. Swift gets that from the macOS title-bar proxy icon,
+which exists only on macOS - Qt can show one via setWindowFilePath, and Windows
+and Linux have no equivalent at all. Drawing it in the toolbar is what lets all
+three ports offer the same thing on every platform.

@@ -39,8 +39,11 @@ def main() -> int:
                 ),
             )
         else:
-            ok = "OTHER" in window.windowTitle()
-            print(f"NAV: {'PASS' if ok else 'FAIL'} (title: {window.windowTitle()})", flush=True)
+            # The document, not the window title: the title names the
+            # application and its version and says nothing about what is open.
+            current = window._current
+            ok = current is not None and "OTHER" in current.name
+            print(f"NAV: {'PASS' if ok else 'FAIL'} (document: {current})", flush=True)
             os._exit(0 if ok else 1)
 
     window._view.loadFinished.connect(on_load)

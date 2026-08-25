@@ -5,6 +5,7 @@
 #include "renderer.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QDesktopServices>
 #include <QDialog>
@@ -12,7 +13,9 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QClipboard>
 #include <QFileSystemWatcher>
+#include <QGuiApplication>
 #include <QIcon>
 #include <QLabel>
 #include <QKeySequence>
@@ -29,8 +32,10 @@
 #include <QSettings>
 #include <QTextBrowser>
 #include <QToolBar>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWebEngineContextMenuRequest>
 #include <QWebEngineFindTextResult>
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
@@ -60,13 +65,29 @@ QIcon icon(const QString &name) {
 } // namespace
 
 MainWindow::MainWindow() {
-    setWindowTitle("Marklens");
+    // The title bar names the application and its version, and stays put; the
+    // document is named on the toolbar, on the same row as the icons. Windows
+    // and Linux have no title-bar proxy icon to hang a path menu from, so
+    // putting the name there is what lets all three platforms behave alike.
+    setWindowTitle(QStringLiteral(MARKLENS_DISPLAY_NAME " ") +
+                   (QStringLiteral(MARKLENS_BUILD).isEmpty()
+                        ? QStringLiteral(MARKLENS_VERSION)
+                        : QStringLiteral(MARKLENS_VERSION " (" MARKLENS_BUILD ")")));
     resize(900, 720);
 
     m_watcher = new QFileSystemWatcher(this);
     connect(m_watcher, &QFileSystemWatcher::fileChanged, this, &MainWindow::onFileChanged);
 
     m_view = new QWebEngineView(this);
+    // Our own context menu, not the webview's. Qt's is a browser's - Back,
+    // Forward, Reload, Save Page As, View Source - and two of those fight the
+    // app: its Back/Forward drive the webview's history rather than the
+    // document history the toolbar's Back uses, and its Reload reloads the page
+    // instead of going through the render pipeline, so it would miss a change
+    // on disk. Leaving each platform's native menu in place would also give
+    // three different menus across the three ports.
+    m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_view, &QWidget::customContextMenuRequested, this, &MainWindow::showContextMenu);
     m_page = new MarkdownPage(m_view);
     // Queued, NOT direct: openDocument fires from inside the page's
     // acceptNavigationRequest, and openPath calls setHtml. Re-entering
@@ -169,9 +190,39 @@ void MainWindow::buildUi() {
     // link in a new window, while all three ports here replace the document in
     // place and so need a way back. Its glyph is the one Swift uses for exactly
     // that button on iOS, where the same thing happens.
-    auto *tb = addToolBar("Main");
+    m_toolBar = addToolBar("Main");
+    auto *tb = m_toolBar;
     tb->setMovable(false);
     tb->setIconSize(QSize(18, 18));
+
+    // Right-clicking the toolbar offers icon / text / icon and text, which is
+    // what the macOS toolbar's own context menu offers. QMainWindow's default
+    // menu there lists the toolbars to show and hide, which is no use when
+    // neither of them is optional.
+    tb->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tb, &QWidget::customContextMenuRequested, this, &MainWindow::showToolBarMenu);
+
+    // The document's name sits on the same row as the icons, with a menu
+    // listing its path. On macOS that is what the title-bar proxy icon does;
+    // Windows and Linux have no such thing, so it is drawn here instead and all
+    // three platforms get the same affordance in the same place.
+    m_pathMenu = new QMenu(this);
+    connect(m_pathMenu, &QMenu::aboutToShow, this, &MainWindow::buildPathMenu);
+
+    m_docButton = new QToolButton(this);
+    m_docButton->setIcon(icon("document"));
+    m_docButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_docButton->setAutoRaise(true);
+    m_docButton->setPopupMode(QToolButton::InstantPopup);
+    m_docButton->setMenu(m_pathMenu);
+    m_docButton->setToolTip("Show the document's path");
+    // The style's own menu arrow is drawn in the button's bottom-right corner,
+    // where it collides with the filename's baseline, and it ignores any size
+    // asked of it - next to a 13pt filename it reads as oversized. Hiding it
+    // and putting a small triangle in the text instead gives a marker that is
+    // set in the same font as the name, so it scales and recolours with it.
+    m_docButton->setStyleSheet("QToolButton::menu-indicator { image: none; width: 0; }");
+    tb->addWidget(m_docButton);
 
     auto *spacer = new QWidget(this);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -194,6 +245,12 @@ void MainWindow::buildUi() {
     tb->addAction(pdfAct);
     tb->addAction(revealAct);
     tb->addAction(m_reload);
+
+    // Restore the display mode chosen last time. Not remembered again here,
+    // which would be writing back what was just read.
+    setToolBarStyle(static_cast<Qt::ToolButtonStyle>(
+                        QSettings().value("toolBarStyle", Qt::ToolButtonIconOnly).toInt()),
+                    false);
 
     buildFindBar();
 
@@ -354,7 +411,7 @@ void MainWindow::toggleZoom() {
 void MainWindow::render() {
     if (m_current.isEmpty()) {
         m_view->setHtml(renderer::page(kEmptyStateBody, assets::assetBaseUrl()));
-        setWindowTitle("Marklens");
+        updateDocButton();
         return;
     }
     QFile f(m_current);
@@ -364,7 +421,7 @@ void MainWindow::render() {
     const QString html = renderer::page(renderer::renderBody(text), assets::assetBaseUrl());
     const QUrl base = QUrl::fromLocalFile(QFileInfo(m_current).absolutePath() + "/");
     m_view->setHtml(html, base);
-    setWindowTitle(QFileInfo(m_current).fileName() + " — Marklens");
+    updateDocButton();
     setStale(false); // whatever changed on disk is now on screen
 }
 
@@ -497,6 +554,117 @@ void MainWindow::findText(bool backward) {
                                  ? QString("%1 of %2").arg(r.activeMatch()).arg(r.numberOfMatches())
                                  : QStringLiteral("No matches"));
     });
+}
+
+void MainWindow::showContextMenu(const QPoint &pos) {
+    QMenu *menu = buildContextMenu();
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->popup(m_view->mapToGlobal(pos));
+}
+
+QMenu *MainWindow::buildContextMenu() {
+    auto *request = m_view->lastContextMenuRequest();
+    const QString selected = request ? request->selectedText() : QString();
+    const QUrl link = request ? request->linkUrl() : QUrl();
+
+    auto *menu = new QMenu(this);
+    auto *copy = menu->addAction("Copy");
+    copy->setEnabled(!selected.isEmpty());
+    connect(copy, &QAction::triggered, this,
+            [this] { m_view->triggerPageAction(QWebEnginePage::Copy); });
+
+    if (!link.isEmpty()) {
+        // For a link into the filesystem the path is what is worth having; a
+        // file:// URL is not what anyone wants to paste.
+        const QString text = link.isLocalFile() ? link.toLocalFile() : link.toString();
+        auto *copyLink = menu->addAction("Copy Link Address");
+        connect(copyLink, &QAction::triggered, this,
+                [text] { QGuiApplication::clipboard()->setText(text); });
+    }
+
+    menu->addSeparator();
+    auto *back = menu->addAction(icon("back"), "Back");
+    back->setEnabled(!m_history.isEmpty());
+    connect(back, &QAction::triggered, this, &MainWindow::goBack);
+    auto *reloadAction = menu->addAction(icon("reload"), "Reload");
+    connect(reloadAction, &QAction::triggered, this, &MainWindow::reload);
+
+    menu->addSeparator();
+    auto *revealAction = menu->addAction(icon("reveal"), kRevealText);
+    revealAction->setEnabled(!m_current.isEmpty());
+    connect(revealAction, &QAction::triggered, this, &MainWindow::reveal);
+    return menu;
+}
+
+void MainWindow::showToolBarMenu(const QPoint &pos) {
+    QMenu menu(this);
+    auto *group = new QActionGroup(&menu);
+    const struct {
+        const char *label;
+        Qt::ToolButtonStyle style;
+    } modes[] = {
+        {"Icon Only", Qt::ToolButtonIconOnly},
+        {"Text Only", Qt::ToolButtonTextOnly},
+        {"Icon and Text", Qt::ToolButtonTextBesideIcon},
+    };
+    for (const auto &mode : modes) {
+        auto *action = menu.addAction(mode.label);
+        action->setCheckable(true);
+        action->setChecked(m_toolBar->toolButtonStyle() == mode.style);
+        group->addAction(action);
+        const Qt::ToolButtonStyle style = mode.style;
+        connect(action, &QAction::triggered, this, [this, style] { setToolBarStyle(style); });
+    }
+    menu.exec(m_toolBar->mapToGlobal(pos));
+}
+
+void MainWindow::setToolBarStyle(Qt::ToolButtonStyle style, bool remember) {
+    m_toolBar->setToolButtonStyle(style);
+    // The document's name is not one of the toolbar's actions and keeps its own
+    // style: hiding it in Icon Only would leave the row with nothing naming the
+    // open document, which is the one thing the title bar no longer says.
+    m_docButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    if (remember)
+        QSettings().setValue("toolBarStyle", static_cast<int>(style));
+}
+
+void MainWindow::updateDocButton() {
+    const bool open = !m_current.isEmpty();
+    // U+25BE, the small triangle macOS uses to mark a pull-down.
+    m_docButton->setText(open ? QFileInfo(m_current).fileName() + QStringLiteral("  \u25BE")
+                              : QString());
+    m_docButton->setEnabled(open);
+    m_docButton->setVisible(open); // nothing to name, nothing to show
+}
+
+// The file, then each enclosing folder out to the root - the same list the
+// macOS title-bar proxy icon offers. It stops at the filesystem root: Finder's
+// "Macintosh HD" and computer entries are Finder's own and have no counterpart
+// on the other two platforms.
+//
+// Built on demand rather than kept in step with the document, because it is
+// only ever looked at while it is open.
+void MainWindow::buildPathMenu() {
+    m_pathMenu->clear();
+    if (m_current.isEmpty())
+        return;
+
+    const QFileInfo info(m_current);
+    auto *file = m_pathMenu->addAction(icon("document"), info.fileName());
+    connect(file, &QAction::triggered, this, &MainWindow::reveal);
+    m_pathMenu->addSeparator();
+
+    QDir dir = info.absoluteDir();
+    while (true) {
+        const QString path = dir.absolutePath();
+        const QString name = dir.isRoot() ? path : dir.dirName();
+        auto *folder = m_pathMenu->addAction(icon("reveal"), name);
+        connect(folder, &QAction::triggered, this, [path] {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        });
+        if (dir.isRoot() || !dir.cdUp())
+            break;
+    }
 }
 
 // The Swift app fills in its reload glyph when the file has changed underneath

@@ -103,7 +103,7 @@ gone - each port shows the shared page shell containing:
 <p style='opacity:.6;padding:1rem'>Open a Markdown file to view it.</p>
 ```
 
-and titles its window `Marklens` with no filename prefix.
+and hides the toolbar's document name, there being nothing to name.
 
 This has no counterpart in the original, which was document-based: a SwiftUI
 `DocumentGroup` never presents an empty document window, so macOS puts up the
@@ -112,6 +112,55 @@ single-window applications and can be started with no argument, so they need an
 answer the original never had to give. It is written down here because it was
 invented once, in the Rust port, and the other two spent a while silently
 disagreeing by showing a blank view.
+
+## Window chrome
+
+The title bar names the application and its version, and never changes:
+`Marklens C++ 0.1.0 (39)`, `Marklens Python 0.1.0 (39)`, `Marklens Rust
+0.1.0 (39)`. The document is named on the toolbar instead, at the left of the
+same row as the icons, with a menu listing its path - the file, then each
+enclosing folder out to the filesystem root. Choosing the file reveals it in the
+file manager; choosing a folder opens it.
+
+The original puts the document's name in the title bar and hangs that menu off
+the macOS proxy icon beside it. Only macOS has such a thing: Qt can show one
+(`setWindowFilePath`) but Windows and Linux have no equivalent at all, so
+drawing the name and its menu in the toolbar is what lets every port offer the
+same affordance in the same place on every platform.
+
+It follows that the window title says nothing about which document is open.
+Anything that needs to know - a test, most obviously - has to ask the port, not
+read the title.
+
+## Toolbar
+
+Icons, no labels, in this order, pushed to the right:
+
+    back · find · zoom out · zoom in · actual size · export · reveal · reload
+
+which is the original's order with **back** added at the front. That toolbar has
+no back button because it opens a link in a new window; these ports replace the
+document in place and so need a way back. The glyph is the one the original uses
+for that button on iOS, where the same thing happens.
+
+**Open** is deliberately absent, as it is there: a document app opens documents
+through File and Open Recent.
+
+The glyphs are not SF Symbols, which are Apple-platform-only and cannot be
+redistributed. They are open look-alikes shared by all three ports; see
+`shared/icons/ICONS.md` for the substitutions and why two of them are drawn by
+hand.
+
+## Find
+
+A bar of its own below the toolbar, hidden until asked for, holding a search
+field, the match count (`3 of 12`, or `No matches`), and previous, next and
+close buttons. Escape closes it. Searching happens as you type; Return steps to
+the next match.
+
+The count is the reason the Rust port cannot use the webview's own `window.find`
+- it reports whether something matched, not how many - so that port marks the
+hits in the DOM itself and colours the active one apart from the rest.
 
 ## Gotchas (learned the hard way — every webview port hits these)
 

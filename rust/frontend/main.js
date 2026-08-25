@@ -11,6 +11,11 @@ const { listen } = window.__TAURI__.event;
 const content = document.getElementById("content");
 const backBtn = document.getElementById("back-btn");
 const findInput = document.getElementById("find-input");
+const docBtn = document.getElementById("doc-btn");
+const docName = document.getElementById("doc-name");
+const pathMenu = document.getElementById("path-menu");
+const contextMenu = document.getElementById("context-menu");
+const toolbar = document.getElementById("toolbar");
 const findBar = document.getElementById("findbar");
 const findCount = document.getElementById("find-count");
 const reloadBtn = document.getElementById("reload-btn");
@@ -19,12 +24,196 @@ const reloadBtn = document.getElementById("reload-btn");
 {
   const ua = navigator.userAgent;
   const label = /Mac/.test(ua) ? "Show in Finder" : /Win/.test(ua) ? "Show in Explorer" : "Show in File Manager";
-  document.getElementById("reveal-btn").title = label;
+  const revealBtn = document.getElementById("reveal-btn");
+  revealBtn.title = label;
+  revealBtn.querySelector(".label").textContent = label;
 }
 
 let currentDoc = null;
 let currentFolder = null;
 const history = [];
+
+// ── menus ────────────────────────────────────────────────────────────────────
+
+/// Build a popup from a list of {label, icon, enabled, onClick} and show it.
+/// `at` positions it; omitted, it stays where the stylesheet put it.
+function popup(menu, items, at) {
+  menu.replaceChildren();
+  for (const item of items) {
+    if (item === "-") {
+      menu.append(document.createElement("hr"));
+      continue;
+    }
+    const b = document.createElement("button");
+    if (item.icon) {
+      const i = document.createElement("span");
+      i.className = "icon";
+      i.style.setProperty("--i", `url('icons/${item.icon}.svg')`);
+      b.append(i);
+    }
+    const t = document.createElement("span");
+    t.textContent = item.label;
+    b.append(t);
+    b.disabled = item.enabled === false;
+    if (!b.disabled) {
+      b.addEventListener("click", () => {
+        hideMenus();
+        item.onClick();
+      });
+    }
+    menu.append(b);
+  }
+  if (at) {
+    menu.style.left = `${at.x}px`;
+    menu.style.top = `${at.y}px`;
+  }
+  menu.hidden = false;
+}
+
+function hideMenus() {
+  pathMenu.hidden = true;
+  contextMenu.hidden = true;
+}
+
+// ── toolbar display mode ─────────────────────────────────────────────────────
+// Icon only / text only / icon and text, from the toolbar's own context menu,
+// as the macOS toolbar offers. Remembered per user in localStorage, which is
+// this port's equivalent of the QSettings the other two use.
+
+const MODES = [
+  ["mode-icon", "Icon Only"],
+  ["mode-text", "Text Only"],
+  ["mode-both", "Icon and Text"],
+];
+
+function setToolbarMode(mode, remember = true) {
+  for (const [cls] of MODES) toolbar.classList.remove(cls);
+  toolbar.classList.add(mode);
+  if (remember) {
+    try {
+      localStorage.setItem("toolbarMode", mode);
+    } catch {
+      // Private windows and locked-down profiles refuse storage; the mode still
+      // applies for this run, it just will not be remembered.
+    }
+  }
+}
+
+let storedMode = "mode-icon";
+try {
+  storedMode = localStorage.getItem("toolbarMode") || "mode-icon";
+} catch {
+  /* see setToolbarMode */
+}
+setToolbarMode(storedMode, false);
+
+toolbar.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  popup(
+    contextMenu,
+    MODES.map(([cls, label]) => ({
+      label: toolbar.classList.contains(cls) ? `\u2713 ${label}` : `\u2003${label}`,
+      onClick: () => setToolbarMode(cls),
+    })),
+    { x: e.clientX, y: e.clientY },
+  );
+});
+
+// ── document name + path menu ────────────────────────────────────────────────
+// The file, then each enclosing folder out to the root - the same list the
+// macOS title-bar proxy icon offers, and the same one the Qt ports build. It
+// stops at the filesystem root: Finder's "Macintosh HD" and computer entries
+// are Finder's own and have no counterpart on the other two platforms.
+
+function pathParts(doc) {
+  const sep = doc.includes("\\") && !doc.startsWith("/") ? "\\" : "/";
+  const bits = doc.split(sep);
+  const file = bits.pop();
+  const folders = [];
+  while (bits.length) {
+    const path = bits.join(sep) || sep;
+    folders.push({ name: bits[bits.length - 1] || path, path });
+    bits.pop();
+  }
+  return { file, folders, sep };
+}
+
+function updateDocButton() {
+  docBtn.hidden = !currentDoc;
+  if (currentDoc) docName.textContent = pathParts(currentDoc).file;
+  hideMenus();
+}
+
+function showPathMenu() {
+  if (!currentDoc) return;
+  const { file, folders } = pathParts(currentDoc);
+  popup(pathMenu, [
+    { label: file, icon: "document", onClick: () => invoke("reveal_document") },
+    "-",
+    ...folders.map((folder) => ({
+      label: folder.name,
+      icon: "reveal",
+      onClick: () => invoke("open_folder", { path: folder.path }),
+    })),
+  ]);
+}
+
+docBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const wasOpen = !pathMenu.hidden;
+  hideMenus();
+  if (!wasOpen) showPathMenu();
+});
+
+// ── document context menu ────────────────────────────────────────────────────
+// Ours, not the webview's. Each platform's engine offers a different browser
+// menu - reload, save page, view source, inspect - and its Back/Reload would
+// drive the webview rather than the app, so the three ports would neither match
+// each other nor behave correctly. See SPEC.md.
+
+content.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const link = e.target.closest?.("a");
+  const selection = String(window.getSelection() ?? "");
+  const items = [
+    {
+      label: "Copy",
+      enabled: selection.length > 0,
+      onClick: () => navigator.clipboard.writeText(selection).catch(() => {}),
+    },
+  ];
+  if (link) {
+    // The resolved target, not the raw href: for a link into the filesystem the
+    // path is what is worth having.
+    const href = link.getAttribute("href") || "";
+    const external = /^[a-z][a-z0-9+.-]*:/i.test(href);
+    const text = external ? href : joinPath(currentFolder, href);
+    items.push({
+      label: "Copy Link Address",
+      onClick: () => navigator.clipboard.writeText(text).catch(() => {}),
+    });
+  }
+  items.push(
+    "-",
+    { label: "Back", icon: "back", enabled: history.length > 0, onClick: () => actions.back() },
+    { label: "Reload", icon: "reload", onClick: () => actions.reload() },
+    "-",
+    {
+      label: document.getElementById("reveal-btn").title,
+      icon: "reveal",
+      enabled: !!currentDoc,
+      onClick: () => actions.reveal(),
+    },
+  );
+  popup(contextMenu, items, { x: e.clientX, y: e.clientY });
+});
+
+// Anywhere else dismisses whatever is open, as a native menu does.
+document.addEventListener("click", hideMenus);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideMenus();
+});
 
 // ── rendering ────────────────────────────────────────────────────────────────
 
@@ -40,6 +229,7 @@ async function show(path, { recordHistory = true } = {}) {
   currentDoc = path;
   reloadBtn.classList.remove("stale"); // what changed on disk is now on screen
   currentFolder = result.folder;
+  updateDocButton();
   backBtn.disabled = history.length === 0;
 
   content.innerHTML = result.body;

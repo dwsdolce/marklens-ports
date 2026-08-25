@@ -14,7 +14,14 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QSettings, QSize, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QDesktopServices,
+    QIcon,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWebEngineCore import (
     QWebEngineFindTextResult,
     QWebEnginePage,
@@ -22,6 +29,7 @@ from PySide6.QtWebEngineCore import (
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
+    QApplication,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -29,10 +37,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QToolBar,
+    QToolButton,
     QWidget,
 )
 
-from . import assets, links, renderer
+from . import __version_string__, assets, links, renderer
 
 _MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdown", ".mkd", ".txt"}
 
@@ -117,7 +126,12 @@ class _Page(QWebEnginePage):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Marklens")
+        # The title bar names the application and its version, and stays put;
+        # the document is named on the toolbar, on the same row as the icons.
+        # Windows and Linux have no title-bar proxy icon to hang a path menu
+        # from, so putting the name there is what lets every platform behave
+        # alike.
+        self.setWindowTitle(f"Marklens Python {__version_string__}")
         self.resize(900, 720)
 
         self._history: list[Path] = []
@@ -128,6 +142,15 @@ class MainWindow(QMainWindow):
         self._watcher.fileChanged.connect(self._on_file_changed)
 
         self._view = QWebEngineView(self)
+        # Our own context menu, not the webview's. Qt's is a browser's - Back,
+        # Forward, Reload, Save Page As, View Source - and two of those fight
+        # the app: its Back/Forward drive the webview's history rather than the
+        # document history the toolbar's Back uses, and its Reload reloads the
+        # page instead of going through the render pipeline, so it would miss a
+        # change on disk. Leaving each platform's native menu in place would
+        # also give three different menus across the three ports.
+        self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._view.customContextMenuRequested.connect(self._show_context_menu)
         self._page = _Page(self._view)
         # Queued, NOT direct: open_document fires from inside the page's
         # acceptNavigationRequest, and open_path calls setHtml. Re-entering
@@ -224,9 +247,40 @@ class MainWindow(QMainWindow):
         # uses for exactly that button on iOS, where the same thing happens.
         self._reload_action = reload_act
         tb = QToolBar("Main", self)
+        self._tool_bar = tb
         tb.setMovable(False)
         tb.setIconSize(QSize(18, 18))
         self.addToolBar(tb)
+
+        # Right-clicking the toolbar offers icon / text / icon and text, which
+        # is what the macOS toolbar's own context menu offers. QMainWindow's
+        # default menu there lists the toolbars to show and hide, which is no
+        # use when neither of them is optional.
+        tb.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tb.customContextMenuRequested.connect(self._show_toolbar_menu)
+
+        # The document's name sits on the same row as the icons, with a menu
+        # listing its path - what the macOS title-bar proxy icon does, drawn
+        # here so every platform gets it in the same place.
+        self._path_menu = QMenu(self)
+        self._path_menu.aboutToShow.connect(self._build_path_menu)
+
+        self._doc_button = QToolButton(self)
+        self._doc_button.setIcon(_icon("document"))
+        self._doc_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._doc_button.setAutoRaise(True)
+        self._doc_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._doc_button.setMenu(self._path_menu)
+        self._doc_button.setToolTip("Show the document's path")
+        # The style's own menu arrow is drawn in the button's bottom-right
+        # corner, where it collides with the filename's baseline, and it ignores
+        # any size asked of it. Hiding it and putting a small triangle in the
+        # text instead gives a marker set in the same font as the name, so it
+        # scales and recolours with it.
+        self._doc_button.setStyleSheet(
+            "QToolButton::menu-indicator { image: none; width: 0; }"
+        )
+        tb.addWidget(self._doc_button)
 
         spacer = QWidget(self)
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -243,6 +297,13 @@ class MainWindow(QMainWindow):
 
         tb.addActions([self._back_action, find_act, zoom_out, zoom_in, zoom_reset,
                        pdf_act, reveal_act, reload_act])
+
+        # Restore the display mode chosen last time. Not remembered again here,
+        # which would be writing back what was just read.
+        stored = QSettings().value(
+            "toolBarStyle", Qt.ToolButtonStyle.ToolButtonIconOnly.value
+        )
+        self._set_toolbar_style(Qt.ToolButtonStyle(int(stored)), remember=False)
 
         self._build_find_bar()
 
@@ -310,6 +371,110 @@ class MainWindow(QMainWindow):
         self._view.findText("")  # drops the highlight
         self._find_count.clear()
         self._view.setFocus()
+
+    def _show_toolbar_menu(self, pos) -> None:
+        menu = QMenu(self)
+        group = QActionGroup(menu)
+        modes = (
+            ("Icon Only", Qt.ToolButtonStyle.ToolButtonIconOnly),
+            ("Text Only", Qt.ToolButtonStyle.ToolButtonTextOnly),
+            ("Icon and Text", Qt.ToolButtonStyle.ToolButtonTextBesideIcon),
+        )
+        for label, style in modes:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self._tool_bar.toolButtonStyle() == style)
+            group.addAction(action)
+            action.triggered.connect(
+                lambda _=False, chosen=style: self._set_toolbar_style(chosen)
+            )
+        menu.exec(self._tool_bar.mapToGlobal(pos))
+
+    def _set_toolbar_style(self, style, remember: bool = True) -> None:
+        self._tool_bar.setToolButtonStyle(style)
+        # The document's name is not one of the toolbar's actions and keeps its
+        # own style: hiding it in Icon Only would leave the row with nothing
+        # naming the open document, which is the one thing the title bar no
+        # longer says.
+        self._doc_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        if remember:
+            QSettings().setValue("toolBarStyle", style.value)
+
+    def _show_context_menu(self, pos) -> None:
+        self._build_context_menu().exec(self._view.mapToGlobal(pos))
+
+    def _build_context_menu(self) -> QMenu:
+        request = self._view.lastContextMenuRequest()
+        selected = request.selectedText() if request else ""
+        link = request.linkUrl() if request else QUrl()
+
+        menu = QMenu(self)
+        copy = menu.addAction("Copy")
+        copy.setEnabled(bool(selected))
+        copy.triggered.connect(
+            lambda: self._view.triggerPageAction(QWebEnginePage.WebAction.Copy)
+        )
+        if not link.isEmpty():
+            # For a link into the filesystem, the path is what is worth having;
+            # a file:// URL is not what anyone wants to paste.
+            text = link.toLocalFile() if link.isLocalFile() else link.toString()
+            copy_link = menu.addAction("Copy Link Address")
+            copy_link.triggered.connect(
+                lambda: QApplication.clipboard().setText(text)
+            )
+
+        menu.addSeparator()
+        back = menu.addAction(_icon("back"), "Back")
+        back.setEnabled(bool(self._history))
+        back.triggered.connect(self._go_back)
+        reload_action = menu.addAction(_icon("reload"), "Reload")
+        reload_action.triggered.connect(self._reload)
+
+        menu.addSeparator()
+        reveal = menu.addAction(_icon("reveal"), _REVEAL_TEXT)
+        reveal.setEnabled(self._current is not None)
+        reveal.triggered.connect(self._reveal)
+
+        return menu
+
+    def _update_doc_button(self) -> None:
+        open_ = self._current is not None
+        # U+25BE, the small triangle macOS uses to mark a pull-down.
+        self._doc_button.setText(f"{self._current.name}  \u25be" if open_ else "")
+        self._doc_button.setEnabled(open_)
+        self._doc_button.setVisible(open_)  # nothing to name, nothing to show
+
+    def _build_path_menu(self) -> None:
+        """The file, then each enclosing folder out to the root.
+
+        The same list the macOS title-bar proxy icon offers. It stops at the
+        filesystem root: Finder's "Macintosh HD" and computer entries are
+        Finder's own and have no counterpart on the other two platforms.
+
+        Built on demand rather than kept in step with the document, because it
+        is only ever looked at while it is open.
+        """
+        self._path_menu.clear()
+        if self._current is None:
+            return
+        opened = self._path_menu.addAction(_icon("document"), self._current.name)
+        opened.triggered.connect(self._reveal)
+        self._path_menu.addSeparator()
+
+        folder = self._current.parent
+        while True:
+            at_root = folder == folder.parent
+            action = self._path_menu.addAction(
+                _icon("reveal"), str(folder) if at_root else folder.name
+            )
+            action.triggered.connect(
+                lambda _=False, path=folder: QDesktopServices.openUrl(
+                    QUrl.fromLocalFile(str(path))
+                )
+            )
+            if at_root:
+                break
+            folder = folder.parent
 
     def _set_stale(self, stale: bool) -> None:
         """Badge the reload glyph when the file changed and auto-reload is off.
@@ -469,7 +634,7 @@ class MainWindow(QMainWindow):
             self._view.setHtml(
                 renderer.page(_EMPTY_STATE_BODY, asset_base=assets.asset_base_url())
             )
-            self.setWindowTitle("Marklens")
+            self._update_doc_button()
             return
         try:
             text = self._current.read_text(encoding="utf-8")
@@ -479,7 +644,7 @@ class MainWindow(QMainWindow):
         html = renderer.page(body, asset_base=assets.asset_base_url())
         base = QUrl.fromLocalFile(str(self._current.parent) + "/")
         self._view.setHtml(html, base)
-        self.setWindowTitle(f"{self._current.name} — Marklens")
+        self._update_doc_button()
         self._set_stale(False)  # whatever changed on disk is now on screen
 
     def _reload(self) -> None:

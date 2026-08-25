@@ -54,13 +54,6 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
     add_recent(&app, &path);
     refresh_recent(&app);
 
-    // The frontend sets document.title, which a Tauri webview does not
-    // propagate to the native window - so without this the title bar stays at
-    // the value from tauri.conf.json while the Qt ports show the filename.
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_title(&format!("{} \u{2014} Marklens", filename(&path)));
-    }
-
     Ok(Rendered {
         body: renderer::render_body(&text),
         folder,
@@ -370,6 +363,27 @@ fn open_file_dialog(app: &AppHandle) {
         });
 }
 
+/// Resolve a path given on the command line to an absolute one.
+///
+/// Falls back to the original string when the file cannot be resolved - a
+/// missing file is the caller's problem to report, not this function's.
+fn absolute(path: &str) -> String {
+    let Ok(resolved) = std::fs::canonicalize(path) else {
+        return path.to_owned();
+    };
+    let text = resolved.to_string_lossy().into_owned();
+    // Windows canonicalize hands back a \\?\ verbatim path. It is correct, and
+    // it also displays badly and compares unequal to every other spelling of
+    // the same file, so the prefix comes off.
+    text.strip_prefix(r"\\?\").map(str::to_owned).unwrap_or(text)
+}
+
+/// Open one of the folders from the document's path menu in the file manager.
+#[tauri::command]
+fn open_folder(app: AppHandle, path: String) {
+    let _ = app.opener().open_path(path, None::<&str>);
+}
+
 fn reveal_current(app: &AppHandle) {
     if let Some(cur) = app.state::<AppState>().current.lock().unwrap().clone() {
         let _ = app.opener().reveal_item_in_dir(cur);
@@ -465,7 +479,16 @@ fn main() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    let initial = std::env::args().skip(1).find(|a| !a.starts_with('-'));
+    // Absolute, so everything downstream sees one spelling of the path: the
+    // recent list, the file watcher, and the folder that relative images
+    // resolve against. The other two ports do the same - QFileInfo's
+    // absoluteFilePath, Path.resolve - and without it `marklens-rust ./doc.md`
+    // renders the text while every relative image resolves against a relative
+    // folder the asset protocol cannot open, so they come out broken.
+    let initial = std::env::args()
+        .skip(1)
+        .find(|a| !a.starts_with('-'))
+        .map(|arg| absolute(&arg));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -487,12 +510,22 @@ fn main() {
             choose_file,
             zoom_view,
             reveal_document,
+            open_folder,
             print_document,
             help_html
         ])
         .setup(|app| {
             let handle = app.handle();
             build_menu(handle)?;
+
+            // The title bar names the application and its version, and stays
+            // put; the document is named on the toolbar, on the same row as the
+            // icons. Windows and Linux have no title-bar proxy icon to hang a
+            // path menu from, so putting the name there is what lets every
+            // platform behave alike. MARKLENS_VERSION comes from build.rs.
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = window.set_title(&format!("Marklens Rust {}", env!("MARKLENS_VERSION")));
+            }
 
             // Nothing named on the command line: pick up where you left off,
             // as the Swift app does. The stored list outlives the files in it -

@@ -32,6 +32,13 @@ article#content {
      pushes the toolbar off the top - the very bug being fixed. */
   min-height: 0;
   overflow-y: auto;
+  /* Also load-bearing, and only because of the flex column above. The shared
+     stylesheet says `margin: 0 auto` on this element, which does nothing for a
+     block in normal flow with no max-width - the Qt ports fill their window.
+     Here it is a flex item, and an auto margin on the cross axis suppresses
+     stretching: the article shrank to fit its text and sat centred with a
+     third of the window empty on either side. */
+  margin-inline: 0;
 }
 
 #toolbar {
@@ -211,4 +218,104 @@ article#content {
   color: inherit;
   font-size: 16px;
   cursor: pointer;
+}
+
+/* --- document name + path menu ------------------------------------------ */
+/* The name sits at the left of the same row as the icons, matching the Qt
+   ports. Its caret is a text glyph rather than an image so it takes the
+   button's font size and colour, and cannot come out oversized. */
+#doc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+}
+#doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#doc-btn .caret {
+  opacity: 0.55;
+  font-size: 0.75em;
+}
+#toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Anchored under the toolbar rather than to the button, so a long path cannot
+   push it off the window. */
+.popup-menu {
+  position: absolute;
+  top: 38px;
+  left: 8px;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 70vw;
+  padding: 4px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  background: Canvas;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.popup-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.popup-menu button:hover {
+  background: rgba(128, 128, 128, 0.18);
+}
+.popup-menu hr {
+  margin: 4px 6px;
+  border: none;
+  border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+/* A popup positioned at the pointer rather than under the toolbar. */
+#context-menu {
+  top: auto;
+  left: auto;
+}
+.popup-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.popup-menu button:disabled:hover {
+  background: transparent;
+}
+
+/* --- toolbar display mode ------------------------------------------------ */
+/* Icon only / text only / icon and text, chosen from the toolbar's own context
+   menu, as the macOS toolbar offers. The document's name is not one of these
+   buttons and keeps its text either way: hiding it would leave the row with
+   nothing naming the open document, which is the one thing the title bar no
+   longer says. */
+#toolbar .label {
+  margin-left: 6px;
+}
+#toolbar.mode-icon .label {
+  display: none;
+}
+#toolbar.mode-text .icon {
+  display: none;
+}
+#toolbar.mode-text .label,
+#toolbar.mode-both .label {
+  display: inline;
+}
+#toolbar.mode-text .label {
+  margin-left: 0;
 }

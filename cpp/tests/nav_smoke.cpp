@@ -34,9 +34,11 @@ int main(int argc, char **argv) {
             });
         } else {
             // Navigated without trapping — confirm we're on the target doc.
-            const bool ok = window.windowTitle().contains("OTHER");
-            std::printf("NAV: %s (title: %s)\n", ok ? "PASS" : "FAIL",
-                        window.windowTitle().toUtf8().constData());
+            // The document, not the window title: the title names the
+            // application and its version and says nothing about what is open.
+            const bool ok = window.currentDocument().contains("OTHER");
+            std::printf("NAV: %s (document: %s)\n", ok ? "PASS" : "FAIL",
+                        window.currentDocument().toUtf8().constData());
             std::exit(ok ? 0 : 1);
         }
     });
