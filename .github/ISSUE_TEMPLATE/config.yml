@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Known gaps
+    url: https://github.com/dwsdolce/marklens-ports/blob/main/shared/spec/SPEC.md#outstanding
+    about: Screenshots, CI and the Rust port's missing GUI test are already known - no need to file them.
+  - name: The behaviour contract
+    url: https://github.com/dwsdolce/marklens-ports/blob/main/shared/spec/SPEC.md
+    about: What all three ports are required to do, and where they deliberately differ from the original.

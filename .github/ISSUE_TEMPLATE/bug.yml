@@ -1,0 +1,88 @@
+name: Bug report
+description: Something behaves wrongly in one or more of the ports.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The three ports are meant to behave identically, so **which of them are
+        affected is the most useful thing you can tell us**. A fault in one port
+        is a defect in that port; the same fault in all three is usually the
+        shared specification being wrong, and they get fixed very differently.
+
+  - type: dropdown
+    id: ports
+    attributes:
+      label: Which ports?
+      description: Select every one you have seen it in. Say so below if you only tried one.
+      multiple: true
+      options:
+        - Python (Marklens Python)
+        - C++ (Marklens C++)
+        - Rust (Marklens Rust)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        The title bar shows it, e.g. `Marklens Rust 0.1.0 (40)`. If you built
+        from source, the commit will do.
+      placeholder: Marklens C++ 0.1.0 (40)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you get it?
+      options:
+        - An installer from a release
+        - Built from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect instead?
+      description: >-
+        If it involves a particular document, attaching it (or a small one that
+        reproduces it) helps more than anything else.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >-
+        Console output, a crash report, a screenshot. For a Qt port started from
+        a terminal, whatever it printed there is often the whole story.
+    validations:
+      required: false

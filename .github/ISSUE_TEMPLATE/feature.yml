@@ -1,0 +1,57 @@
+name: Feature or behaviour change
+description: Something the viewer should do differently, or do at all.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth knowing before you write: **behaviour is a three-port commitment**.
+        The ports are kept identical by
+        [shared/spec/SPEC.md](https://github.com/dwsdolce/marklens-ports/blob/main/shared/spec/SPEC.md), so a change to
+        what the viewer *does* has to be specified once and implemented three
+        times, in Python, C++ and Rust. That is not a reason not to ask - it is
+        why the answer sometimes takes a while, and why "just in the Rust one"
+        is usually not on offer.
+
+        Changes to how a port is *built, packaged or tested* carry no such cost
+        and can land alone.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is awkward today?
+      description: >-
+        Describe the situation rather than the fix. The three ports have
+        different constraints, and the best answer is often not the one that
+        first comes to mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Does this change what the viewer does?
+      options:
+        - "Yes - user-visible behaviour (needs a spec change and three implementations)"
+        - "No - build, packaging, tests or documentation only"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: original
+    attributes:
+      label: How does the original Marklens handle it?
+      description: >-
+        These are ports of a [macOS/iOS app](https://github.com/donald-jackson/marklens).
+        Where it has already answered a question, that answer usually wins - so
+        if you know what it does here, say so. Leave blank if not.
+    validations:
+      required: false
