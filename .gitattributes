@@ -16,3 +16,11 @@
 
 # The Windows shells want the opposite.
 *.bat text eol=crlf
+
+# Keep GitHub's language statistics honest. shared/web holds the frontend
+# assets copied verbatim from the Swift app - mermaid.min.js alone is 2.5 MB of
+# minified JavaScript - and counting them makes a repository whose entire point
+# is Python, C++ and Rust report itself as 88% JavaScript.
+shared/web/* linguist-vendored
+# Likewise the licence texts the Linux packages are obliged to carry.
+shared/licenses/* linguist-vendored

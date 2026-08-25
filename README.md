@@ -117,12 +117,13 @@ divergences and one gap in the tests.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE), with attributions in
+[NOTICES.md](NOTICES.md).
 
 These are ground-up reimplementations rather than a translation: the original is
 Swift and no code was carried across. What did come from it is the **application
-icon**, which is MIT and remains © Donald Jackson; `LICENSE` reproduces that
-notice, as MIT requires.
+icon**, which is MIT and remains © Donald Jackson;
+[NOTICES.md](NOTICES.md) reproduces that notice, as MIT requires.
 
 ### Third-party components
 
