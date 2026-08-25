@@ -180,3 +180,35 @@ hits in the DOM itself and colours the active one apart from the rest.
   not exact attribute order), so different GFM engines can pass the same
   contract.
 - `fixtures/link_cases.json` — (href, document path) → resolved path or null.
+
+## Testing
+
+Two layers, and the ports are not level with each other on the second.
+
+**The shared fixtures** above are the contract every port meets, and all three
+do: `test_core` (C++), `test_renderer`/`test_links` (Python), `fixtures.rs`
+(Rust).
+
+**Driving the real application** is the layer that catches what fixtures cannot:
+that a document *renders*, rather than merely that the window opened. The worst
+bugs found so far were both of that kind - a WebEngine helper that could not
+start, so nothing ever rendered while the app looked healthy, and relative
+images silently resolving against the wrong folder. C++ and Python cover it with
+`smoke_gui` (loads the sample and asserts, via JavaScript, that the image
+loaded, mermaid drew and code highlighted) and `nav_smoke` (clicks a relative
+link and asserts the viewer navigated).
+
+The Rust port has no equivalent, and the obstacle is structural rather than a
+missing file. C++ keeps its window code in a library, `marklens_gui`, which both
+GUI tests link against. Rust's `lib.rs` holds only the renderer and the link
+resolver; the window, the menus and the commands all live in the binary, where
+no test can reach them. Closing the gap means moving the application into the
+library and adding a second binary to drive it - the arrangement C++ already
+has.
+
+Headless is not part of the contract. The Qt tests run under
+`QT_QPA_PLATFORM=offscreen` so they work on a CI runner with no display and do
+not seize the screen on every build, but they assert on the DOM rather than on
+pixels, so a real window would satisfy them equally. Tauri has no offscreen mode
+at all, so a Rust GUI test would necessarily use a real window - a reason to
+write one, not a reason not to.
