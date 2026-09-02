@@ -2,6 +2,7 @@
 // contract the Python port satisfies. QtTest + QJsonDocument, no extra deps.
 
 #include "links.h"
+#include "titles.h"
 #include "renderer.h"
 
 #include <QDir>
@@ -35,6 +36,8 @@ private slots:
 
     void linkCases_data();
     void linkCases();
+
+    void titleCases();
 };
 
 void TestCore::renderCases_data() {
@@ -111,6 +114,29 @@ void TestCore::linkCases() {
     // resolved is only asserted for non-external hrefs (matches the fixture).
     if (external.isEmpty())
         QCOMPARE(posix(links::documentRelativePath(href, doc).value_or(QString())), resolved);
+}
+
+// The window-title convention, checked for both platforms from either one.
+// macOS puts the application's name in the menu bar, so a title repeating it is
+// a Windows convention in the wrong place. titleFor takes the convention as an
+// argument rather than reading the platform, which is what lets this run
+// anywhere - the rule is shared by all three ports and written down in
+// shared/spec/SPEC.md.
+void TestCore::titleCases() {
+    QCOMPARE(titles::forDocument("index.md", true), QStringLiteral("index.md"));
+    QVERIFY(titles::forDocument("index.md", false).startsWith("Marklens C++ "));
+
+    // An empty title bar would be worse than a redundant one.
+    QCOMPARE(titles::forDocument(QString(), true), QStringLiteral("Marklens C++"));
+    QVERIFY(titles::forDocument(QString(), false).startsWith("Marklens C++ "));
+
+    QCOMPARE(titles::kDocumentOnly,
+#if defined(Q_OS_MACOS)
+             true
+#else
+             false
+#endif
+    );
 }
 
 QTEST_MAIN(TestCore)

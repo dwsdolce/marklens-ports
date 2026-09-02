@@ -1,7 +1,7 @@
 // Prevent a console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use marklens::{links, renderer};
+use marklens::{links, renderer, titles};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -53,6 +53,12 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
     *state.current.lock().unwrap() = Some(path.clone());
     add_recent(&app, &path);
     refresh_recent(&app);
+
+    // The frontend sets document.title, which a Tauri webview does not
+    // propagate to the native window, so the title is set from here.
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(&titles::for_document(&filename(&path), titles::DOCUMENT_ONLY));
+    }
 
     Ok(Rendered {
         body: renderer::render_body(&text),
@@ -518,13 +524,8 @@ fn main() {
             let handle = app.handle();
             build_menu(handle)?;
 
-            // The title bar names the application and its version, and stays
-            // put; the document is named on the toolbar, on the same row as the
-            // icons. Windows and Linux have no title-bar proxy icon to hang a
-            // path menu from, so putting the name there is what lets every
-            // platform behave alike. MARKLENS_VERSION comes from build.rs.
             if let Some(window) = handle.get_webview_window("main") {
-                let _ = window.set_title(&format!("Marklens Rust {}", env!("MARKLENS_VERSION")));
+                let _ = window.set_title(&titles::for_document("", titles::DOCUMENT_ONLY));
             }
 
             // Nothing named on the command line: pick up where you left off,

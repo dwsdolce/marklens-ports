@@ -203,6 +203,7 @@ add_library(marklens_core STATIC
     src/renderer.cpp
     src/links.cpp
     src/assets.cpp
+    src/titles.cpp
 )
 target_include_directories(marklens_core PUBLIC src)
 target_link_libraries(marklens_core PUBLIC Qt6::Core marklens_md4c)

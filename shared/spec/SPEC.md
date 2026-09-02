@@ -115,18 +115,39 @@ disagreeing by showing a blank view.
 
 ## Window chrome
 
-The title bar names the application and its version, and never changes:
-`Marklens C++ 0.1.0 (39)`, `Marklens Python 0.1.0 (39)`, `Marklens Rust
-0.1.0 (39)`. The document is named on the toolbar instead, at the left of the
-same row as the icons, with a menu listing its path - the file, then each
-enclosing folder out to the filesystem root. Choosing the file reveals it in the
-file manager; choosing a folder opens it.
+The document is named on the toolbar, at the left of the same row as the icons,
+with a menu listing its path - the file, then each enclosing folder out to the
+filesystem root. Choosing the file reveals it in the file manager; choosing a
+folder opens it. That is the same on every platform.
 
-The original puts the document's name in the title bar and hangs that menu off
-the macOS proxy icon beside it. Only macOS has such a thing: Qt can show one
-(`setWindowFilePath`) but Windows and Linux have no equivalent at all, so
-drawing the name and its menu in the toolbar is what lets every port offer the
-same affordance in the same place on every platform.
+The title bar is **not** the same on every platform, because the platforms do
+not agree about what a title bar is for.
+
+| | Title bar shows |
+|---|---|
+| Windows, Linux | the application and its version - `Marklens C++ 0.1.0 (39)` |
+| macOS | the document alone - `index.md` |
+
+macOS puts the application's name in the menu bar, so a title that repeats it is
+a Windows convention applied in the wrong place. Windows and Linux have no menu
+bar of their own, so the title is the only place the application can name
+itself. With no document open, both show the application's name; an empty title
+bar would be worse than a redundant one.
+
+The document therefore appears twice on macOS, in the title bar and on the
+toolbar. That is deliberate: the toolbar entry is what carries the path menu,
+which the title bar has nowhere to put.
+
+The original hangs that path menu off the macOS proxy icon in the title bar.
+Only macOS has such a thing: Qt can show one (`setWindowFilePath`) but Windows
+and Linux have no equivalent at all, so drawing the name and its menu in the
+toolbar is what lets every port offer the same affordance in the same place on
+every platform.
+
+Each port keeps the rule as a pure function taking the convention as an
+argument - `titles::forDocument`, `title_for`, `titles::for_document` - rather
+than reading the platform where the title is set, so both conventions can be
+tested from either machine.
 
 It follows that the window title says nothing about which document is open.
 Anything that needs to know - a test, most obviously - has to ask the port, not

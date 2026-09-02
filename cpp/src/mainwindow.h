@@ -30,6 +30,7 @@ public:
 
     bool hasDocument() const { return !m_current.isEmpty(); }
 
+
     // Test seams: let the nav test click links and observe loads on the real
     // app wiring (the queued openDocument connection lives in the ctor), and
     // ask which document ended up open. The window title cannot answer that -

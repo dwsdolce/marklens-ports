@@ -3,6 +3,7 @@
 #include "assets.h"
 #include "page.h"
 #include "renderer.h"
+#include "titles.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -65,14 +66,7 @@ QIcon icon(const QString &name) {
 } // namespace
 
 MainWindow::MainWindow() {
-    // The title bar names the application and its version, and stays put; the
-    // document is named on the toolbar, on the same row as the icons. Windows
-    // and Linux have no title-bar proxy icon to hang a path menu from, so
-    // putting the name there is what lets all three platforms behave alike.
-    setWindowTitle(QStringLiteral(MARKLENS_DISPLAY_NAME " ") +
-                   (QStringLiteral(MARKLENS_BUILD).isEmpty()
-                        ? QStringLiteral(MARKLENS_VERSION)
-                        : QStringLiteral(MARKLENS_VERSION " (" MARKLENS_BUILD ")")));
+    setWindowTitle(titles::forDocument(QString(), titles::kDocumentOnly));
     resize(900, 720);
 
     m_watcher = new QFileSystemWatcher(this);
@@ -411,6 +405,7 @@ void MainWindow::toggleZoom() {
 void MainWindow::render() {
     if (m_current.isEmpty()) {
         m_view->setHtml(renderer::page(kEmptyStateBody, assets::assetBaseUrl()));
+        setWindowTitle(titles::forDocument(QString(), titles::kDocumentOnly));
         updateDocButton();
         return;
     }
@@ -421,6 +416,7 @@ void MainWindow::render() {
     const QString html = renderer::page(renderer::renderBody(text), assets::assetBaseUrl());
     const QUrl base = QUrl::fromLocalFile(QFileInfo(m_current).absolutePath() + "/");
     m_view->setHtml(html, base);
+    setWindowTitle(titles::forDocument(QFileInfo(m_current).fileName(), titles::kDocumentOnly));
     updateDocButton();
     setStale(false); // whatever changed on disk is now on screen
 }

@@ -46,6 +46,28 @@ from . import __version_string__, assets, links, renderer
 _MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdown", ".mkd", ".txt"}
 
 
+#: Whether a window title should name the document and nothing else.
+#: macOS puts the application's name in the menu bar, so repeating it in every
+#: title is a Windows convention applied in the wrong place. Windows and Linux
+#: keep it, because there it really is the convention - and there the document
+#: is named on the toolbar instead.
+DOCUMENT_ONLY_TITLE = sys.platform == "darwin"
+
+#: The application's name and version, for a title bar that has to carry it.
+APP_TITLE = f"Marklens Python {__version_string__}"
+
+
+def title_for(document: str, document_only: bool) -> str:
+    """The window title for a document, by platform convention.
+
+    Taking the convention as an argument rather than reading the platform keeps
+    this testable for both conventions from either machine.
+    """
+    if not document:
+        return "Marklens Python" if document_only else APP_TITLE
+    return document if document_only else APP_TITLE
+
+
 def _icon(name: str) -> QIcon:
     """A toolbar glyph from the set shared with the other two ports.
 
@@ -131,7 +153,7 @@ class MainWindow(QMainWindow):
         # Windows and Linux have no title-bar proxy icon to hang a path menu
         # from, so putting the name there is what lets every platform behave
         # alike.
-        self.setWindowTitle(f"Marklens Python {__version_string__}")
+        self.setWindowTitle(title_for("", DOCUMENT_ONLY_TITLE))
         self.resize(900, 720)
 
         self._history: list[Path] = []
@@ -634,6 +656,7 @@ class MainWindow(QMainWindow):
             self._view.setHtml(
                 renderer.page(_EMPTY_STATE_BODY, asset_base=assets.asset_base_url())
             )
+            self.setWindowTitle(title_for("", DOCUMENT_ONLY_TITLE))
             self._update_doc_button()
             return
         try:
@@ -644,6 +667,7 @@ class MainWindow(QMainWindow):
         html = renderer.page(body, asset_base=assets.asset_base_url())
         base = QUrl.fromLocalFile(str(self._current.parent) + "/")
         self._view.setHtml(html, base)
+        self.setWindowTitle(title_for(self._current.name, DOCUMENT_ONLY_TITLE))
         self._update_doc_button()
         self._set_stale(False)  # whatever changed on disk is now on screen
 
