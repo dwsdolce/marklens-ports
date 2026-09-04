@@ -10,16 +10,18 @@
 # Produces:
 #   rust/installer/Marklens_Rust_V<version>.exe
 #
-# Runs under Cygwin or Git Bash. Requires Rust (rustup), the Tauri CLI
-# (cargo install tauri-cli --version "^2.0") and Python 3 for the icon and
-# version stamping. The MSVC build tools have to be installed; the WebView2
-# runtime does not - the NSIS installer carries its bootstrapper.
+# Runs under Cygwin or Git Bash. Requires Rust (rustup), Inno Setup 6 and
+# Python 3 for the icon and version stamping. The MSVC build tools have to be
+# installed; the WebView2 runtime does not - the installer downloads Microsoft's
+# bootstrapper if the runtime is absent.
 #
-# Unlike the other two ports this does not drive Inno Setup. Tauri's own
-# bundler builds the NSIS installer, and it is the only one of the three that
-# knows how to detect and install the WebView2 runtime the app cannot start
-# without. The output is renamed to match the other ports so a release
-# directory reads consistently.
+# Inno Setup, like the other two ports, rather than Tauri's own NSIS bundler.
+# The bundler installed WebView2 for us, but its version must be three-part
+# semver, so the build number never reached the installer and every build looked
+# like the same version to it - which meant it could never offer to replace an
+# existing install. packaging/marklens-rust.iss explains the trade in full.
+# macOS and Linux still use Tauri's bundler, where its .dmg, .deb and .rpm
+# output has no equivalent here.
 
 # Run from the port's root regardless of where this script is invoked from.
 cd "$(dirname "$0")/.."
@@ -46,12 +48,9 @@ if ! command -v cargo >/dev/null 2>&1; then
     echo "cargo is not on PATH - install Rust from https://rustup.rs"
     exit 1
 fi
-# The CLI is only needed for bundling; `app` mode is plain cargo.
-if [ "$mode" != "app" ] && ! cargo tauri --version >/dev/null 2>&1; then
-    echo "The Tauri CLI is not installed"
-    echo "Run: packaging/setup   (or: cargo install tauri-cli --version \"^2.0\" --locked)"
-    exit 1
-fi
+# The Tauri CLI is not needed on Windows any more: cargo builds the executable
+# and Inno Setup packages it. It is still what builds the macOS and Linux
+# bundles, so packaging/setup goes on installing it.
 
 echo "Running build for $(uname -m) architecture"
 
@@ -60,18 +59,18 @@ echo "Running build for $(uname -m) architecture"
 #===============================================
 # The cargo target directory is deliberately left alone - a full rebuild of the
 # Tauri dependency tree costs minutes and nothing in it goes stale between
-# packaging runs. Only the bundle output is cleared.
-rm -rf src-tauri/target/release/bundle
+# packaging runs. Only the installer output is cleared.
 rm -rf installer
 mkdir -p installer
 
 #===============================================
 # Generate the version from the git commit count
 #===============================================
-# The bundle itself carries the three-part version from tauri.conf.json, which
-# Tauri requires to be valid semver; the fourth component is the build number
-# and appears in the installer file name, matching the other two ports.
-# --print also writes rust/build/installer_version, so this is one call.
+# Four-part, as the other two ports use: the Inno script reads
+# rust/build/installer_version and puts the whole thing in the installer name,
+# the version resource and the Add/Remove Programs entry. tauri.conf.json keeps
+# its own three-part semver, which is all Tauri will accept and all the macOS
+# and Linux bundles need. --print also writes the file, so this is one call.
 # tr: belt and braces. This value becomes a file name, and a stray carriage
 # return from a Windows text-mode stdout would land inside it - $(...)
 # strips trailing newlines but not the CR that precedes them.
@@ -97,30 +96,40 @@ if [ "$mode" = "app" ]; then
 fi
 
 #===============================================
-# Build and bundle
+# Build the executable
 #===============================================
-# NSIS only: the MSI target needs WiX downloaded separately and offers nothing
-# here that NSIS does not.
-(cd src-tauri && cargo tauri build --bundles nsis)
+# One self-contained binary: the frontend is embedded at compile time and the
+# webview is the operating system's, so there is nothing to stage beside it.
+(cd src-tauri && cargo build --release)
 if [ $? -ne 0 ]; then
-    echo "cargo tauri build failed"
+    echo "cargo build failed"
     exit 1
 fi
 
 #===============================================
-# Collect the installer under the shared naming convention
+# Prepare installer path
 #===============================================
-built=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe 2>/dev/null | head -1)
-if [ -z "$built" ]; then
-    echo "No NSIS installer was produced under src-tauri/target/release/bundle/nsis"
+# ISCC is a native Windows program, so it needs a Windows path. cygpath is
+# present in both Cygwin and Git Bash.
+installer_file=$(cygpath -w "$(pwd)/packaging/marklens-rust.iss")
+ISCC_PATH="C:/Program Files (x86)/Inno Setup 6/ISCC.exe"
+
+if [ ! -f "$ISCC_PATH" ]; then
+    echo "Inno Setup 6 not found at ${ISCC_PATH}"
+    echo "Install it from https://jrsoftware.org/isdl.php"
     exit 1
 fi
 
-out="installer/Marklens_Rust_V${version}.exe"
-cp "$built" "$out"
+#===============================================
+# Build the installer
+#===============================================
+# No /D argument: the script reads build/installer_version itself. Git Bash
+# rewrites arguments that look like Unix paths and Cygwin does not, so a
+# command-line define cannot be written to work in both shells.
+"$ISCC_PATH" "$installer_file"
 if [ $? -ne 0 ]; then
-    echo "Copying the installer failed"
+    echo "Creating the installer failed"
     exit 1
 fi
 
-echo "Installer created successfully: rust/${out}"
+echo "Installer created successfully: rust/installer/Marklens_Rust_V${version}.exe"

@@ -33,6 +33,8 @@ advice=""
 
 ok()   { printf '  %-8s %s\n' "ok" "$1"; }
 bad()  { printf '  %-8s %s\n' "MISSING" "$1"; missing=$((missing + 1)); }
+# Absent but not fatal: wanted by build_<platform>, not by building or running.
+note() { printf '  %-8s %s\n' "--" "$1"; }
 howto() { advice="$advice
 $1"; }
 
@@ -114,16 +116,33 @@ case "$(uname -s)" in
         ;;
     *)
         # WebView2 ships with Windows 11 and current Windows 10. The installer
-        # carries the bootstrapper for machines without it, so a miss here is
-        # only a problem for running the app straight out of cargo build.
+        # downloads Microsoft's bootstrapper when the runtime is missing, so a
+        # miss here only matters for running straight out of cargo build.
         if [ -d "/c/Program Files (x86)/Microsoft/EdgeWebView/Application" ] || \
            [ -d "/c/Program Files/Microsoft/EdgeWebView/Application" ]; then
             ok "WebView2 runtime"
         else
-            ok "WebView2 runtime not detected - the installer bundles it"
+            ok "WebView2 runtime not detected - the installer fetches it"
         fi
         ;;
 esac
+
+#===============================================
+# Packaging tools - reported, never required
+#===============================================
+# Only what this script cannot install: Inno Setup is a Windows installer to
+# click through. It matters only at the moment you package, and build_win says
+# so again then. macOS and Linux need nothing extra - Tauri's bundler writes the
+# .dmg, .deb and .rpm itself.
+if [ "$(uname -s)" != "Darwin" ] && [ "$(uname -s)" != "Linux" ]; then
+    echo
+    echo "Packaging (only needed for build_win)"
+    if [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+        ok "Inno Setup 6"
+    else
+        note "Inno Setup 6 - needed for the installer:  https://jrsoftware.org/isdl.php"
+    fi
+fi
 
 #===============================================
 # Dependencies
@@ -131,7 +150,17 @@ esac
 echo
 echo "Dependencies (this script installs these)"
 
-if cargo tauri --version >/dev/null 2>&1; then
+# Windows packages with Inno Setup, so the CLI is dead weight there: it takes
+# minutes to build from source and nothing on this platform calls it. It is
+# still what bundles the .dmg, .deb and .rpm, so it stays a requirement on the
+# platforms that produce those.
+if [ "$(uname -s)" != "Darwin" ] && [ "$(uname -s)" != "Linux" ]; then
+    if cargo tauri --version >/dev/null 2>&1; then
+        ok "tauri-cli $(cargo tauri --version 2>/dev/null | awk '{print $2}')"
+    else
+        note "tauri-cli - only needed to bundle on macOS and Linux; Windows uses Inno Setup"
+    fi
+elif cargo tauri --version >/dev/null 2>&1; then
     ok "tauri-cli $(cargo tauri --version 2>/dev/null | awk '{print $2}')"
 elif [ "$CHECK_ONLY" -eq 1 ]; then
     bad "tauri-cli - re-run without --check to install it"

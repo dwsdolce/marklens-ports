@@ -16,17 +16,21 @@ packaging/setup --check    # report only, change nothing
 `Cargo.toml` already is this port's manifest — `cargo build` fetches and builds
 every library dependency by itself — so there is far less here than for the C++
 port. What Cargo has no slot for is *tools*: the Tauri CLI is a binary, not a
-crate this links against, so `setup` installs it. It also warms the crate cache,
+crate this links against, so `setup` installs it where it is needed. It also warms the crate cache,
 which turns the first build from a long silence into a step that reports itself.
 
 **Prerequisites — you install these.** Rust via [rustup](https://rustup.rs), at
 least 1.85; anything older cannot parse the 2024-edition manifests in this
 dependency tree and fails with `feature edition2024 is required` a long way from
 anything informative. On Linux, the webkit2gtk development packages. macOS uses
-WKWebView and Windows uses WebView2, both part of the OS — and the Windows
-installer carries the WebView2 bootstrapper for machines without it.
+WKWebView and Windows uses WebView2, both part of the OS — and on Windows the
+installer downloads Microsoft's bootstrapper if the runtime turns out to be
+missing, which it will not be on Windows 11.
 
-**Dependencies — `setup` installs these.** The Tauri CLI, via `cargo install`.
+**Dependencies — `setup` installs these.** The Tauri CLI, via `cargo install`,
+on macOS and Linux, where it bundles the `.dmg`, `.deb` and `.rpm`. On Windows
+it is reported but not installed: packaging there is Inno Setup's job now, and
+the CLI takes minutes to build from source for nothing.
 
 ## Run
 
@@ -72,11 +76,18 @@ packaging/build_mac        # -> Marklens_Rust_V<ver>.dmg  (or `build_mac app`)
 packaging/build_linux      # -> dist/Marklens-Rust-<ver>-{AppImage,deb}
 ```
 
-Tauri's own bundler does the packaging here rather than Inno Setup and
-appimagetool, as the other two ports use: it is the only one that installs the
-WebView2 runtime Windows needs, and the frontend is already embedded in the
-binary so there is nothing else to collect. The scripts stamp the version, and
-rename the output to the naming convention the other ports use. See
+Windows uses **Inno Setup**, the same as the other two ports and through the
+same two shared includes, so the existing-install prompt and the "Open with"
+registration behave identically across all three. macOS and Linux keep Tauri's
+bundler, which writes the `.dmg`, `.deb` and `.rpm` itself.
+
+Tauri's bundler used to build the Windows installer too, because it installs the
+WebView2 runtime. It was dropped because its version must be three-part semver:
+the build number never reached the installer, so every build looked like the
+same version to it and it could never offer to replace an existing install.
+`packaging/marklens-rust.iss` now checks for the runtime and downloads
+Microsoft's bootstrapper when it is missing — a fallback for machines older than
+Windows 11, which ships it. See
 [../packaging/README.md](../packaging/README.md) for the details and for
 signing.
 

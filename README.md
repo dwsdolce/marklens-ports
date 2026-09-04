@@ -69,7 +69,7 @@ which is the point of the exercise:
 | Needs | Python ≥ 3.12 | CMake ≥ 3.19, Qt 6 + WebEngine | Rust ≥ 1.85 |
 | Markdown engine | markdown-it-py | md4c | comrak |
 | Webview | QtWebEngine (bundled Chromium) | QtWebEngine (bundled Chromium) | the OS webview — WKWebView, WebView2, WebKitGTK |
-| Installer built by | PyInstaller | CMake + deploy tools | Tauri's bundler |
+| Installer built by | PyInstaller | CMake + deploy tools | Cargo (Inno on Windows, Tauri's bundler elsewhere) |
 | Tests | fixtures, GUI smoke, navigation | fixtures, GUI smoke, navigation | fixtures only ([why](#known-issues)) |
 
 The webview row is the interesting one: the Qt ports carry their own Chromium

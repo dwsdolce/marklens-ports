@@ -35,8 +35,12 @@ begin
 end;
 
 // An earlier install may not have registered under our current AppId (or the
-// registry entry was lost), so also probe the chosen directory for an Inno
-// uninstaller EXE (unins000.exe..unins009.exe).
+// registry entry was lost), so also probe the chosen directory for an
+// uninstaller EXE: Inno's unins000.exe..unins009.exe, or the uninstall.exe an
+// NSIS installer leaves. The Rust port shipped as an NSIS bundle before it moved
+// to Inno, and its install would otherwise be silently overwritten - the folder
+// is the only place that install can still be recognised, since its registry
+// entry is under a key this script does not own.
 function FindUninstallerInDir(const Dir: String): String;
 var
   I: Integer;
@@ -58,6 +62,51 @@ begin
         Break;
       end;
     end;
+    if Result = '' then
+    begin
+      Candidate := AddBackslash(Dir) + 'uninstall.exe';
+      if FileExists(Candidate) then
+        Result := Candidate;
+    end;
+  finally
+    Wow64RevertWow64FsRedirection(OldRedir);
+  end;
+end;
+
+// The two families take different switches, and getting them wrong is silent
+// rather than loud: an NSIS uninstaller handed Inno's flags treats them as
+// unknown and returns immediately, leaving everything in place. NSIS also needs
+// _?=<dir> to run in place - without it the uninstaller copies itself to TEMP
+// and returns straight away, so Exec's wait would tell us nothing.
+function IsNsisUninstaller(const UninstallExe: String): Boolean;
+begin
+  Result := CompareText(ExtractFileName(UninstallExe), 'uninstall.exe') = 0;
+end;
+
+function UninstallerArgs(const UninstallExe, Dir: String): String;
+begin
+  if IsNsisUninstaller(UninstallExe) then
+    Result := '/S _?=' + RemoveBackslash(Dir)
+  else
+    Result := '/SILENT /NORESTART /SUPPRESSMSGBOXES';
+end;
+
+// _?= is what makes the wait above mean anything - without it an NSIS
+// uninstaller copies itself to TEMP and returns immediately - but it also tells
+// the uninstaller not to delete itself, so it survives the uninstall it just
+// performed. Left there it outlives the install it belonged to, and the next run
+// of this scan would offer to run an uninstaller for an application that is no
+// longer present. Inno's own unins*.exe removes itself and needs none of this.
+procedure RemoveLeftoverUninstaller(const UninstallExe: String);
+var
+  OldRedir: LongWord;
+begin
+  if not IsNsisUninstaller(UninstallExe) then
+    Exit;
+  Wow64DisableWow64FsRedirection(OldRedir);
+  try
+    if FileExists(UninstallExe) then
+      DeleteFile(UninstallExe);
   finally
     Wow64RevertWow64FsRedirection(OldRedir);
   end;
@@ -114,8 +163,9 @@ begin
 end;
 
 // Fires after the user picks a destination folder. If that folder already
-// contains an Inno uninstaller (from a prior install whose registry entry is
-// missing or used a different AppId), offer to run it before overwriting.
+// contains an uninstaller - Inno's or NSIS's - from a prior install whose
+// registry entry is missing, or was written under a different AppId or by a
+// different installer entirely, offer to run it before overwriting.
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   SelectedDir, UninstallExe, Msg: String;
@@ -139,7 +189,7 @@ begin
   case Response of
     IDYES:
       begin
-        if not Exec(UninstallExe, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '',
+        if not Exec(UninstallExe, UninstallerArgs(UninstallExe, SelectedDir), '',
                     SW_SHOW, ewWaitUntilTerminated, ResultCode) then
         begin
           MsgBox('Failed to launch the existing uninstaller.', mbError, MB_OK);
@@ -150,7 +200,9 @@ begin
           MsgBox('The existing uninstaller returned error code ' + IntToStr(ResultCode) + '.',
                  mbError, MB_OK);
           Result := False;
-        end;
+        end
+        else
+          RemoveLeftoverUninstaller(UninstallExe);
       end;
     IDCANCEL:
       Result := False;

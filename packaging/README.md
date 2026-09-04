@@ -255,13 +255,19 @@ cmake --build build --config Release
 cmake --install build --config Release
 ```
 
-**Rust** — Rust, the Tauri CLI (`cargo install tauri-cli --version "^2.0"`) and
-Python 3. Tauri's own bundler does the packaging rather than Inno Setup: it is
-the only one of the three that installs the WebView2 runtime the app cannot
-start without, and it builds the disk image and AppImage itself. Tauri also
-registers the Markdown file types as a full association rather than an
-"Open with" entry — the one place the three ports differ, and the reason to
-install this one last if you want it to own `.md`.
+**Rust** — Rust and Python 3, plus Inno Setup 6 on Windows and the Tauri CLI
+(`cargo install tauri-cli --version "^2.0"`) on macOS and Linux. Windows packages
+with Inno Setup like the other two ports, sharing the same two includes, so all
+three now prompt the same way about an existing install and register the same
+"Open with" entry rather than seizing `.md`. macOS and Linux keep Tauri's
+bundler for the `.dmg`, `.deb` and `.rpm`.
+
+Windows was Tauri's until it became clear what the bundler costs: its version
+must be three-part semver, so the build number never reached the installer and
+every build compared equal to the one already installed, which meant it could
+never offer to replace it. What the bundler did give was the WebView2 runtime;
+`rust/packaging/marklens-rust.iss` now probes for it and downloads Microsoft's
+bootstrapper when absent. That check is the whole of what moving off NSIS cost.
 
 ## Deploying the Qt runtime
 
