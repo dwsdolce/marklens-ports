@@ -47,7 +47,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 200; ++i)
         tail += "filler\n\n";
     QFile f(dir.filePath("doc.md"));
-    f.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+        fail("could not write doc.md");
     f.write(("# Top\n\n" + filler + "[jump](#the-target)\n\n" + tail + "## The Target\n\ncontent\n")
                 .toUtf8());
     f.close();
