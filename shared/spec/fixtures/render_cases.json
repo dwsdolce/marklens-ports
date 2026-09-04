@@ -4,74 +4,171 @@
     {
       "name": "heading",
       "md": "# Hello World",
-      "contains": ["<h1", "Hello World", "</h1>"],
+      "contains": [
+        "<h1",
+        "Hello World",
+        "</h1>"
+      ],
       "absent": []
     },
     {
       "name": "emphasis",
       "md": "This is **bold** and *italic*.",
-      "contains": ["<strong>bold</strong>", "<em>italic</em>"],
+      "contains": [
+        "<strong>bold</strong>",
+        "<em>italic</em>"
+      ],
       "absent": []
     },
     {
       "name": "inline code",
       "md": "Use `printf` here.",
-      "contains": ["<code>printf</code>"],
+      "contains": [
+        "<code>printf</code>"
+      ],
       "absent": []
     },
     {
       "name": "fenced code with language",
       "md": "```swift\nlet x = 1\n```",
-      "contains": ["<pre>", "<code", "language-swift", "let x = 1"],
+      "contains": [
+        "<pre>",
+        "<code",
+        "language-swift",
+        "let x = 1"
+      ],
       "absent": []
     },
     {
       "name": "gfm table",
       "md": "| A | B |\n|---|---|\n| 1 | 2 |",
-      "contains": ["<table>", "<th>A</th>", "<td>1</td>"],
+      "contains": [
+        "<table>",
+        "<th>A</th>",
+        "<td>1</td>"
+      ],
       "absent": []
     },
     {
       "name": "gfm strikethrough",
       "md": "~~gone~~",
-      "contains": ["<del>gone</del>"],
+      "contains": [
+        "<del>gone</del>"
+      ],
       "absent": []
     },
     {
       "name": "gfm task list",
       "md": "- [x] done\n- [ ] todo",
-      "contains": ["type=\"checkbox\"", "checked", "done", "todo"],
+      "contains": [
+        "type=\"checkbox\"",
+        "checked",
+        "done",
+        "todo"
+      ],
       "absent": []
     },
     {
       "name": "relative link preserved",
       "md": "See [inventory](INVENTORY.md).",
-      "contains": ["href=\"INVENTORY.md\"", "inventory"],
+      "contains": [
+        "href=\"INVENTORY.md\"",
+        "inventory"
+      ],
       "absent": []
     },
     {
       "name": "relative image preserved",
       "md": "![icon](design/icon.svg)",
-      "contains": ["<img", "src=\"design/icon.svg\"", "alt=\"icon\""],
-      "absent": ["marklens-doc"]
+      "contains": [
+        "<img",
+        "src=\"design/icon.svg\"",
+        "alt=\"icon\""
+      ],
+      "absent": [
+        "marklens-doc"
+      ]
     },
     {
       "name": "mermaid block rewritten to div",
       "md": "```mermaid\ngraph TD; A-->B;\n```",
-      "contains": ["<div class=\"mermaid\">", "graph TD", "A-->B"],
-      "absent": ["language-mermaid", "&gt;&gt;", "<code"]
+      "contains": [
+        "<div class=\"mermaid\">",
+        "graph TD",
+        "A-->B"
+      ],
+      "absent": [
+        "language-mermaid",
+        "&gt;&gt;",
+        "<code"
+      ]
     },
     {
       "name": "non-mermaid code block untouched",
       "md": "```js\na > b\n```",
-      "contains": ["<pre>", "<code", "language-js"],
-      "absent": ["class=\"mermaid\""]
+      "contains": [
+        "<pre>",
+        "<code",
+        "language-js"
+      ],
+      "absent": [
+        "class=\"mermaid\""
+      ]
     },
     {
       "name": "blockquote",
       "md": "> quoted",
-      "contains": ["<blockquote>", "quoted"],
+      "contains": [
+        "<blockquote>",
+        "quoted"
+      ],
       "absent": []
+    },
+    {
+      "name": "heading id",
+      "md": "## Building the app",
+      "contains": [
+        "id=\"building-the-app\"",
+        "Building the app"
+      ],
+      "absent": []
+    },
+    {
+      "name": "heading id drops punctuation",
+      "md": "### Route A — Android Studio",
+      "contains": [
+        "id=\"route-a--android-studio\""
+      ],
+      "absent": [
+        "id=\"route-a-android-studio\""
+      ]
+    },
+    {
+      "name": "heading id keeps digits and underscores",
+      "md": "#### 4. Install the API 36 packages",
+      "contains": [
+        "id=\"4-install-the-api-36-packages\""
+      ],
+      "absent": []
+    },
+    {
+      "name": "heading id disambiguates duplicates",
+      "md": "## Prerequisites\n\ntext\n\n## Prerequisites",
+      "contains": [
+        "id=\"prerequisites\"",
+        "id=\"prerequisites-1\""
+      ],
+      "absent": []
+    },
+    {
+      "name": "heading id ignores inline markup",
+      "md": "## The `build` step",
+      "contains": [
+        "id=\"the-build-step\""
+      ],
+      "absent": [
+        "id=\"the-code-build-code-step\""
+      ]
     }
   ]
 }

@@ -8,6 +8,7 @@ to the system browser, other documents into the viewer.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -93,7 +94,10 @@ else:
 class _Page(QWebEnginePage):
     """Routes link clicks instead of letting the view navigate to them."""
 
-    open_document = Signal(Path)  # a relative link to another document
+    # The fragment travels with the path: links.document_relative_path drops
+    # it (the shared link contract pins that), but "setup.md#windows-shells"
+    # has to land on the heading, not the top of the file.
+    open_document = Signal(Path, str)  # a relative link, and its #fragment
     document_path: Path | None = None
 
     # camelCase because it overrides Qt's virtual, not because we like it. A
@@ -136,7 +140,7 @@ class _Page(QWebEnginePage):
         if url.isLocalFile():
             target = Path(url.toLocalFile())
             if target.suffix.lower() in _MARKDOWN_SUFFIXES:
-                self.open_document.emit(target)
+                self.open_document.emit(target, url.fragment())
                 return False
             # Non-markdown local file (image, pdf) → let the OS handle it.
             QDesktopServices.openUrl(url)
@@ -173,6 +177,8 @@ class MainWindow(QMainWindow):
         # also give three different menus across the three ports.
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._view.customContextMenuRequested.connect(self._show_context_menu)
+        self._pending_fragment = ""
+        self._view.loadFinished.connect(self._scroll_to_pending_fragment)
         self._page = _Page(self._view)
         # Queued, NOT direct: open_document fires from inside the page's
         # acceptNavigationRequest, and open_path calls setHtml. Re-entering
@@ -639,9 +645,12 @@ class MainWindow(QMainWindow):
 
     # ── loading ──────────────────────────────────────────────────────────────
 
-    @Slot(Path)
-    def open_path(self, path: Path, *, record_history: bool = True) -> None:
+    @Slot(Path, str)
+    def open_path(self, path: Path, fragment: str = "", *, record_history: bool = True) -> None:
         path = path.resolve()
+        # Held until loadFinished: the document is rendered with setHtml, so
+        # there is nothing to scroll to until the new page exists.
+        self._pending_fragment = fragment
         if record_history and self._current is not None and self._current != path:
             self._history.append(self._current)
             self._back_action.setEnabled(True)
@@ -650,6 +659,31 @@ class MainWindow(QMainWindow):
         self._page.document_path = path
         self._add_recent(path)
         self._render()
+
+    def _scroll_to_pending_fragment(self, ok: bool) -> None:
+        """Honour a #fragment that arrived with a link to *another* document.
+
+        Same-document anchors are handled by the view itself (see _Page); this
+        is the cross-file case, where the fragment cannot be acted on until the
+        new document has been rendered.
+        """
+        # Only a SUCCESSFUL load consumes it. Refusing a link navigation makes
+        # QtWebEngine emit loadFinished(False), and that arrives after the queued
+        # open_path has already stored the fragment - so clearing it here
+        # unconditionally threw it away just before the document it belonged to
+        # was rendered.
+        if not ok:
+            return
+        fragment, self._pending_fragment = self._pending_fragment, ""
+        if not fragment:
+            return
+        # json.dumps quotes and escapes it: a fragment is arbitrary text from a
+        # document, and it is being pasted into JavaScript source.
+        target = json.dumps(fragment)
+        self._view.page().runJavaScript(
+            f"(document.getElementById({target})"
+            f" || document.getElementsByName({target})[0])?.scrollIntoView()"
+        )
 
     def _render(self) -> None:
         if self._current is None:

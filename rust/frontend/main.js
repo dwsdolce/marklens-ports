@@ -217,7 +217,7 @@ document.addEventListener("keydown", (e) => {
 
 // ── rendering ────────────────────────────────────────────────────────────────
 
-async function show(path, { recordHistory = true } = {}) {
+async function show(path, { recordHistory = true, fragment = "" } = {}) {
   let result;
   try {
     result = await invoke("render_document", { path });
@@ -236,6 +236,14 @@ async function show(path, { recordHistory = true } = {}) {
   resolveImages();
   highlight();
   runMermaid();
+
+  // A #fragment that came with a link to ANOTHER document. Same-document
+  // anchors are left to the browser (see the click handler); this is the
+  // cross-file case, which cannot act until the new body is in the DOM.
+  if (fragment) {
+    (document.getElementById(fragment) ||
+      document.getElementsByName(fragment)[0])?.scrollIntoView();
+  }
 
   document.title = `${filename(path)} — Marklens`;
   invoke("watch_document", { path }).catch(() => {});
@@ -268,7 +276,7 @@ content.addEventListener("click", async (e) => {
   if (href.startsWith("#")) return; // in-page anchor: native scroll
   e.preventDefault();
   const action = await invoke("follow_link", { href, doc: currentDoc });
-  if (action.action === "open") show(action.path);
+  if (action.action === "open") show(action.path, { fragment: action.fragment });
 });
 
 function goBack() {

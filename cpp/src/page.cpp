@@ -36,7 +36,7 @@ bool MarkdownPage::acceptNavigationRequest(const QUrl &url, NavigationType type,
     if (url.isLocalFile()) {
         const QString target = url.toLocalFile();
         if (isMarkdown(target))
-            emit openDocument(target);
+            emit openDocument(target, url.fragment());
         else
             QDesktopServices::openUrl(url);
         return false;

@@ -12,6 +12,12 @@ pub fn render_body(markdown: &str) -> String {
     options.extension.strikethrough = true; // renders <del>, matching GFM
     options.extension.tasklist = true;
     options.extension.autolink = true;
+    // Heading ids, GitHub's algorithm - see shared/spec/fixtures/render_cases.json.
+    // CommonMark defines none, so without this every "#section" link in a
+    // document lands nowhere. Some("") is the id prefix: none, matching GitHub
+    // and the two Qt ports, which slug the rendered HTML by hand because
+    // markdown-it and md4c have no equivalent switch.
+    options.extension.header_ids = Some(String::new());
     // Let raw <img>/<p align> in the source pass through, like the Swift viewer.
     options.render.unsafe_ = true;
 

@@ -41,10 +41,46 @@ _MERMAID_BLOCK = re.compile(
 )
 
 
+# Heading slugs, GitHub's algorithm - see shared/spec/fixtures/render_cases.json.
+# CommonMark says nothing about heading ids, so a plain parser emits <h2> with no
+# id and every "#section" link in a document lands nowhere. GitHub, and VS Code's
+# preview, add them; documents are written expecting that.
+_HEADING = re.compile(r"<h([1-6])>(.*?)</h([1-6])>", re.DOTALL)
+_TAGS = re.compile(r"<[^>]+>")
+# Everything except word characters, hyphens and spaces is dropped rather than
+# replaced: "Route A - Android Studio" (em dash) loses the dash while the spaces
+# around it survive as two hyphens, hence links like "#route-a--android-studio".
+_NOT_IN_SLUG = re.compile(r"[^\w\- ]", re.UNICODE)
+
+
+def _slug(inner_html: str) -> str:
+    text = unescape(_TAGS.sub("", inner_html)).strip().lower()
+    return _NOT_IN_SLUG.sub("", text).replace(" ", "-")
+
+
+def _add_heading_ids(html: str) -> str:
+    seen: dict[str, int] = {}
+
+    def repl(m: re.Match[str]) -> str:
+        level, inner, closing = m.group(1), m.group(2), m.group(3)
+        if level != closing:  # can't happen: headings don't nest
+            return m.group(0)
+        base = _slug(inner)
+        if not base:
+            return m.group(0)  # nothing to slug: leave the heading alone
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        # Repeats get -1, -2 ..., so two "Prerequisites" headings stay reachable.
+        ident = base if n == 0 else f"{base}-{n}"
+        return f'<h{level} id="{ident}">{inner}</h{level}>'
+
+    return _HEADING.sub(repl, html)
+
+
 def render_body(markdown_text: str) -> str:
     """Markdown → HTML body (Mermaid blocks rewritten, no page shell)."""
     html = _MD.render(markdown_text)
-    return _rewrite_mermaid(html)
+    return _add_heading_ids(_rewrite_mermaid(html))
 
 
 def _rewrite_mermaid(html: str) -> str:

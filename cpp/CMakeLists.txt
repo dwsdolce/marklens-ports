@@ -322,6 +322,29 @@ qt_add_executable(nav_smoke tests/nav_smoke.cpp)
 target_link_libraries(nav_smoke PRIVATE marklens_gui)
 add_test(NAME navigation COMMAND nav_smoke)
 
-set_tests_properties(smoke navigation PROPERTIES
+# Cross-file #fragment: opens another document AND lands on the heading.
+qt_add_executable(frag_smoke tests/frag_smoke.cpp)
+target_link_libraries(frag_smoke PRIVATE marklens_gui)
+# Console, not a Windows GUI app: qt_add_executable defaults to WIN32 on
+# Windows, which detaches stdout, so the test's own PASS/FAIL line vanishes and
+# a failure gives you nothing but an exit code.
+set_target_properties(frag_smoke smoke_gui nav_smoke PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME fragment COMMAND frag_smoke)
+
+set_tests_properties(smoke navigation fragment PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --no-sandbox;QTWEBENGINE_DISABLE_SANDBOX=1"
 )
+
+# Windows has no rpath, so a test executable that links Qt exits with
+# STATUS_DLL_NOT_FOUND (0xc0000135) before main() unless Qt's bin/ is on PATH.
+# ctest never inherited it, which made the `ctest` line in cpp/README.md fail on
+# Windows for reasons that looked nothing like a missing DLL. packaging/run_win
+# solves the same problem the same way, and derives the directory the same way:
+# Qt6_DIR is <kit>/lib/cmake/Qt6, so bin/ is three levels up.
+if(WIN32)
+    get_filename_component(_qt_kit "${Qt6_DIR}/../../.." ABSOLUTE)
+    if(EXISTS "${_qt_kit}/bin")
+        set_tests_properties(core smoke navigation fragment PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qt_kit}/bin")
+    endif()
+endif()

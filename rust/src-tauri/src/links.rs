@@ -16,6 +16,18 @@ pub fn external_url(href: &str) -> Option<String> {
 /// Resolve a relative `href` against the folder holding `doc_path`. `None` when
 /// there's nothing to resolve (empty href, or a bare `#fragment`). Fragment is
 /// dropped.
+/// The `#fragment` of an href, percent-decoded, or "" when there is none.
+/// `document_relative_path` deliberately drops it - the shared link contract
+/// pins that - so a caller that must land on a heading asks for it here.
+pub fn fragment_of(href: &str) -> String {
+    match href.split_once('#') {
+        Some((_, frag)) if !frag.is_empty() => {
+            percent_decode_str(frag).decode_utf8_lossy().into_owned()
+        }
+        _ => String::new(),
+    }
+}
+
 pub fn document_relative_path(href: &str, doc_path: &str) -> Option<String> {
     // Keep an empty left side: "#frag" → "" before the fragment.
     let path_part = href.split('#').next().unwrap_or("");
@@ -55,4 +67,22 @@ fn lexically_normalize(path: &Path) -> String {
         pb.push(c.as_os_str());
     }
     pb.to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+mod fragment_tests {
+    use super::fragment_of;
+
+    #[test]
+    fn takes_the_fragment_and_decodes_it() {
+        assert_eq!(fragment_of("setup.md#windows-shells"), "windows-shells");
+        assert_eq!(fragment_of("#local-anchor"), "local-anchor");
+        assert_eq!(fragment_of("a.md#caf%C3%A9"), "café");
+    }
+
+    #[test]
+    fn absent_or_empty_is_empty() {
+        assert_eq!(fragment_of("setup.md"), "");
+        assert_eq!(fragment_of("setup.md#"), "");
+    }
 }

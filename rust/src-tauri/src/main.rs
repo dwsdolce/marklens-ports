@@ -70,7 +70,7 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
 #[serde(tag = "action", rename_all = "lowercase")]
 enum LinkAction {
     External,
-    Open { path: String },
+    Open { path: String, fragment: String },
     None,
 }
 
@@ -81,7 +81,12 @@ fn follow_link(app: AppHandle, href: String, doc: String) -> LinkAction {
         return LinkAction::External;
     }
     match links::document_relative_path(&href, &doc) {
-        Some(path) => LinkAction::Open { path },
+        // The fragment rides along: "setup.md#windows-shells" has to open the
+        // other document AND land on the heading.
+        Some(path) => LinkAction::Open {
+            path,
+            fragment: links::fragment_of(&href),
+        },
         None => LinkAction::None,
     }
 }
@@ -551,7 +556,15 @@ fn main() {
         // It sends an Apple Event, which Tauri surfaces here as RunEvent::Opened
         // and otherwise discards - so the app comes up on its empty state and
         // the file association looks broken when it is only unhandled.
-        .run(|app, event| {
+        .run(|_app, _event| {
+            // RunEvent::Opened exists only on macOS and iOS - Tauri gates the
+            // variant itself - so naming it unguarded stops the crate compiling
+            // on Windows and Linux ("no variant named `Opened`"). The whole body
+            // is behind the cfg rather than the match arm, since the bindings
+            // and the emit below only mean anything where the variant exists.
+            #[cfg(target_os = "macos")]
+            {
+            let (app, event) = (_app, _event);
             let tauri::RunEvent::Opened { urls } = event else {
                 return;
             };
@@ -572,5 +585,6 @@ fn main() {
             // otherwise be what a Finder-launched window rendered.
             *app.state::<AppState>().initial.lock().unwrap() = Some(path.clone());
             let _ = app.emit("open-file", path);
+            }
         });
 }

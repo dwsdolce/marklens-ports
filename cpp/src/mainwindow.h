@@ -21,7 +21,8 @@ public:
     MainWindow();
 
 public slots:
-    void openPath(const QString &path, bool recordHistory = true);
+    void openPath(const QString &path, bool recordHistory = true,
+                  const QString &fragment = QString());
 
 public:
     // Reopen the document last looked at. False when the recent list is empty
@@ -85,5 +86,8 @@ private:
 
     QStringList m_history;
     QString m_current;
+    // Held until loadFinished: the document is rendered with setHtml, so
+    // there is nothing to scroll to until the new page exists.
+    QString m_pendingFragment;
     bool m_autoReload = true;
 };

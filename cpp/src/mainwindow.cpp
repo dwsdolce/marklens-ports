@@ -13,6 +13,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QFileInfo>
 #include <QClipboard>
 #include <QFileSystemWatcher>
@@ -88,8 +90,34 @@ MainWindow::MainWindow() {
     // QtWebEngine's navigation machinery synchronously traps (SIGTRAP), so
     // defer the load until the current navigation callback has returned.
     connect(m_page, &MarkdownPage::openDocument, this,
-            [this](const QString &p) { openPath(p); }, Qt::QueuedConnection);
+            [this](const QString &p, const QString &frag) { openPath(p, true, frag); },
+            Qt::QueuedConnection);
     m_view->setPage(m_page);
+    // Honour a #fragment that arrived with a link to *another* document.
+    // Same-document anchors are handled by the view itself (see page.cpp); this
+    // is the cross-file case, which cannot act until the new page is rendered.
+    connect(m_view, &QWebEngineView::loadFinished, this, [this](bool ok) {
+        // Only a SUCCESSFUL load consumes it. Refusing a link navigation makes
+        // QtWebEngine emit loadFinished(false), and that arrives after the
+        // queued openPath has already stored the fragment - so clearing it here
+        // unconditionally threw the fragment away just before the document it
+        // belonged to was rendered.
+        if (!ok)
+            return;
+        const QString fragment = m_pendingFragment;
+        m_pendingFragment.clear();
+        if (fragment.isEmpty())
+            return;
+        // The fragment is arbitrary text from a document and is about to be
+        // pasted into JavaScript source, so quote it as a JSON string.
+        const QString target =
+            QString::fromUtf8(QJsonDocument(QJsonArray{fragment}).toJson(QJsonDocument::Compact))
+                .mid(1)
+                .chopped(1);
+        m_view->page()->runJavaScript("(document.getElementById(" + target +
+                                      ") || document.getElementsByName(" + target +
+                                      ")[0])?.scrollIntoView()");
+    });
     // Assets are referenced by absolute file:// URLs from the doc-folder base;
     // allow local content to load them.
     m_view->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessFileUrls, true);
@@ -290,8 +318,9 @@ void MainWindow::showAbout() {
                  QStringLiteral("https://github.com/donald-jackson/marklens")));
 }
 
-void MainWindow::openPath(const QString &path, bool recordHistory) {
+void MainWindow::openPath(const QString &path, bool recordHistory, const QString &fragment) {
     const QString resolved = QFileInfo(path).absoluteFilePath();
+    m_pendingFragment = fragment;
     if (recordHistory && !m_current.isEmpty() && m_current != resolved) {
         m_history.append(m_current);
         m_back->setEnabled(true);

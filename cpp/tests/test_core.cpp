@@ -130,13 +130,14 @@ void TestCore::titleCases() {
     QCOMPARE(titles::forDocument(QString(), true), QStringLiteral("Marklens C++"));
     QVERIFY(titles::forDocument(QString(), false).startsWith("Marklens C++ "));
 
-    QCOMPARE(titles::kDocumentOnly,
+    // The #if is outside the macro deliberately: a preprocessor directive
+    // inside a macro argument list is undefined, and MSVC rejects it outright
+    // ("'#': invalid character") while GCC and Clang let it pass.
 #if defined(Q_OS_MACOS)
-             true
+    QCOMPARE(titles::kDocumentOnly, true);
 #else
-             false
+    QCOMPARE(titles::kDocumentOnly, false);
 #endif
-    );
 }
 
 QTEST_MAIN(TestCore)

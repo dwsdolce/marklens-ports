@@ -10,7 +10,10 @@ public:
     void setDocumentPath(const QString &path) { m_documentPath = path; }
 
 signals:
-    void openDocument(const QString &path);
+    // The fragment travels with the path: links::documentRelativePath drops
+    // it (the shared link contract pins that), but "setup.md#windows-shells"
+    // has to land on the heading, not the top of the file.
+    void openDocument(const QString &path, const QString &fragment);
 
 protected:
     bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override;

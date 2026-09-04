@@ -1,5 +1,6 @@
 #include "renderer.h"
 
+#include <QHash>
 #include <QRegularExpression>
 
 #include <md4c-html.h>
@@ -57,12 +58,61 @@ QString rewriteMermaid(const QString &html) {
     return result;
 }
 
+// Heading slugs, GitHub's algorithm - see shared/spec/fixtures/render_cases.json.
+// md4c has no notion of heading ids, so this runs over its output. CommonMark
+// says nothing about them either, but documents are written expecting GitHub's:
+// without them every "#section" link in a document lands nowhere.
+const QRegularExpression &headingTag() {
+    // No backreference for the closing level: headings cannot nest, so the lazy
+    // (.*?) already stops at the first close, and the caller checks they agree.
+    static const QRegularExpression re(R"(<h([1-6])>(.*?)</h([1-6])>)",
+                                       QRegularExpression::DotMatchesEverythingOption);
+    return re;
+}
+
+QString slugFor(const QString &innerHtml) {
+    static const QRegularExpression tags(R"(<[^>]+>)");
+    // Anything that is not a word character, hyphen or space is dropped rather
+    // than replaced, so "Route A - Android Studio" (em dash) keeps the spaces
+    // either side of it and slugs to "route-a--android-studio".
+    static const QRegularExpression notInSlug(R"([^\w\- ])",
+                                              QRegularExpression::UseUnicodePropertiesOption);
+    QString text = unescapeHtml(QString(innerHtml).remove(tags)).trimmed().toLower();
+    return text.remove(notInSlug).replace(QLatin1Char(' '), QLatin1Char('-'));
+}
+
+QString addHeadingIds(const QString &html) {
+    QHash<QString, int> seen;
+    QString result;
+    result.reserve(html.size());
+    qsizetype last = 0;
+    auto it = headingTag().globalMatch(html);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        result += html.mid(last, m.capturedStart() - last);
+        const QString level = m.captured(1);
+        const QString inner = m.captured(2);
+        const QString slug = slugFor(inner);
+        if (slug.isEmpty() || level != m.captured(3)) {
+            result += m.captured(0); // nothing to slug, or levels disagree
+        } else {
+            const int n = seen[slug]++;
+            // Repeats get -1, -2 ..., so two "Prerequisites" stay reachable.
+            const QString id = n == 0 ? slug : slug + "-" + QString::number(n);
+            result += "<h" + level + " id=\"" + id + "\">" + inner + "</h" + level + ">";
+        }
+        last = m.capturedEnd();
+    }
+    result += html.mid(last);
+    return result;
+}
+
 } // namespace
 
 namespace renderer {
 
 QString renderBody(const QString &markdown) {
-    return rewriteMermaid(markdownToHtml(markdown));
+    return addHeadingIds(rewriteMermaid(markdownToHtml(markdown)));
 }
 
 bool containsMermaid(const QString &markdown) {
