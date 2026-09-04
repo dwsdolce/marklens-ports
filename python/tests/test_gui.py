@@ -24,7 +24,7 @@ ENV = {
 }
 
 
-@pytest.mark.parametrize("script", ["smoke_gui.py", "nav_smoke.py"])
+@pytest.mark.parametrize("script", ["smoke_gui.py", "nav_smoke.py", "back_smoke.py"])
 def test_gui_script(script: str) -> None:
     result = subprocess.run(
         [sys.executable, str(TESTS_DIR / script)],

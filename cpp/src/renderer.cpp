@@ -137,6 +137,24 @@ QString page(const QString &body, const QString &assetBase, bool dark) {
 %4
 </article>
 <script>
+// Back has to return to where a link was read, not merely to the previous
+// document: following an anchor within a document is a move too. The host
+// cannot record the position itself - acceptNavigationRequest is synchronous
+// and the scroll offset lives here - so the page captures it on the way down,
+// before the browser scrolls, and hands it back when the host asks.
+window.__mlBack = (function () {
+    var stack = [];
+    document.addEventListener('click', function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+        if (a) { stack.push(document.scrollingElement.scrollTop); }
+    }, true);
+    window.__mlBackDepth = function () { return stack.length; };
+    return function () {
+        if (!stack.length) { return false; }
+        document.scrollingElement.scrollTop = stack.pop();
+        return true;
+    };
+})();
 window.addEventListener('DOMContentLoaded', function () {
     if (window.hljs) {
         document.querySelectorAll('pre code').forEach(function (el) { window.hljs.highlightElement(el); });

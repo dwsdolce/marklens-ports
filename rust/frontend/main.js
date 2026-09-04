@@ -31,7 +31,17 @@ const reloadBtn = document.getElementById("reload-btn");
 
 let currentDoc = null;
 let currentFolder = null;
+// Entries are {path, scroll}, not bare paths. Back used to reopen the previous
+// document even when all you had done was follow an anchor within the current
+// one, because an in-page jump was invisible to a stack that only held
+// filenames. #content is the scroller (see chrome.css), so the offset is read
+// from there rather than from the window.
 const history = [];
+
+function historyPush() {
+  if (currentDoc) history.push({ path: currentDoc, scroll: content.scrollTop });
+  backBtn.disabled = history.length === 0;
+}
 
 // ── menus ────────────────────────────────────────────────────────────────────
 
@@ -217,7 +227,7 @@ document.addEventListener("keydown", (e) => {
 
 // ── rendering ────────────────────────────────────────────────────────────────
 
-async function show(path, { recordHistory = true, fragment = "" } = {}) {
+async function show(path, { recordHistory = true, fragment = "", scroll = null } = {}) {
   let result;
   try {
     result = await invoke("render_document", { path });
@@ -225,7 +235,10 @@ async function show(path, { recordHistory = true, fragment = "" } = {}) {
     content.innerHTML = `<p style="color:#b00">Couldn't open <code>${path}</code>: ${e}</p>`;
     return;
   }
-  if (recordHistory && currentDoc && currentDoc !== path) history.push(currentDoc);
+  // Auto-reload re-shows the SAME document; that must not throw away where you
+  // were reading, so only a real navigation resets to the top.
+  const sameDoc = currentDoc === path;
+  if (recordHistory && currentDoc && currentDoc !== path) historyPush();
   currentDoc = path;
   reloadBtn.classList.remove("stale"); // what changed on disk is now on screen
   currentFolder = result.folder;
@@ -243,6 +256,11 @@ async function show(path, { recordHistory = true, fragment = "" } = {}) {
   if (fragment) {
     (document.getElementById(fragment) ||
       document.getElementsByName(fragment)[0])?.scrollIntoView();
+  } else if (scroll !== null) {
+    // Going back to a document restores where you were in it, not the top.
+    content.scrollTop = scroll;
+  } else if (!sameDoc) {
+    content.scrollTop = 0; // a new document starts at the beginning
   }
 
   document.title = `${filename(path)} — Marklens`;
@@ -273,7 +291,12 @@ content.addEventListener("click", async (e) => {
   const a = e.target.closest("a[href]");
   if (!a) return;
   const href = a.getAttribute("href");
-  if (href.startsWith("#")) return; // in-page anchor: native scroll
+  if (href.startsWith("#")) {
+    // Record the position first: the browser scrolls after this handler, and
+    // Back has to be able to come back to where the link was read.
+    historyPush();
+    return; // then let the native scroll happen
+  }
   e.preventDefault();
   const action = await invoke("follow_link", { href, doc: currentDoc });
   if (action.action === "open") show(action.path, { fragment: action.fragment });
@@ -282,7 +305,14 @@ content.addEventListener("click", async (e) => {
 function goBack() {
   const prev = history.pop();
   backBtn.disabled = history.length === 0;
-  if (prev) show(prev, { recordHistory: false });
+  if (!prev) return;
+  if (prev.path === currentDoc) {
+    // Same document: an anchor jump. Nothing to re-render, just go back to
+    // where you were reading.
+    content.scrollTop = prev.scroll;
+    return;
+  }
+  show(prev.path, { recordHistory: false, scroll: prev.scroll });
 }
 
 // ── find ─────────────────────────────────────────────────────────────────────

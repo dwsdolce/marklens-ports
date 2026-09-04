@@ -328,10 +328,14 @@ target_link_libraries(frag_smoke PRIVATE marklens_gui)
 # Console, not a Windows GUI app: qt_add_executable defaults to WIN32 on
 # Windows, which detaches stdout, so the test's own PASS/FAIL line vanishes and
 # a failure gives you nothing but an exit code.
-set_target_properties(frag_smoke smoke_gui nav_smoke PROPERTIES WIN32_EXECUTABLE FALSE)
+qt_add_executable(back_smoke tests/back_smoke.cpp)
+target_link_libraries(back_smoke PRIVATE marklens_gui)
+add_test(NAME back COMMAND back_smoke)
+
+set_target_properties(frag_smoke back_smoke smoke_gui nav_smoke PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME fragment COMMAND frag_smoke)
 
-set_tests_properties(smoke navigation fragment PROPERTIES
+set_tests_properties(smoke navigation fragment back PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --no-sandbox;QTWEBENGINE_DISABLE_SANDBOX=1"
 )
 
@@ -344,7 +348,7 @@ set_tests_properties(smoke navigation fragment PROPERTIES
 if(WIN32)
     get_filename_component(_qt_kit "${Qt6_DIR}/../../.." ABSOLUTE)
     if(EXISTS "${_qt_kit}/bin")
-        set_tests_properties(core smoke navigation fragment PROPERTIES
+        set_tests_properties(core smoke navigation fragment back PROPERTIES
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qt_kit}/bin")
     endif()
 endif()

@@ -178,6 +178,9 @@ class MainWindow(QMainWindow):
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._view.customContextMenuRequested.connect(self._show_context_menu)
         self._pending_fragment = ""
+        # How many in-page positions the page is holding for us. Tracked here so
+        # the Back button's state needs no round trip to the page.
+        self._in_page_depth = 0
         self._view.loadFinished.connect(self._scroll_to_pending_fragment)
         self._page = _Page(self._view)
         # Queued, NOT direct: open_document fires from inside the page's
@@ -185,6 +188,10 @@ class MainWindow(QMainWindow):
         # QtWebEngine's navigation machinery synchronously traps (SIGTRAP), so
         # defer the load until the navigation callback has returned.
         self._page.open_document.connect(self.open_path, Qt.ConnectionType.QueuedConnection)
+        # A same-document #fragment click never reaches acceptNavigationRequest -
+        # Qt scrolls without asking - but it does change the page URL, so this is
+        # what tells us an in-page move happened and Back now has somewhere to go.
+        self._page.urlChanged.connect(lambda _url: self._refresh_back_state())
         self._view.setPage(self._page)
         s = self._view.settings()
         # file:// assets (styles.css etc.) are referenced absolutely from the
@@ -653,12 +660,15 @@ class MainWindow(QMainWindow):
         self._pending_fragment = fragment
         if record_history and self._current is not None and self._current != path:
             self._history.append(self._current)
-            self._back_action.setEnabled(True)
+        if path != self._current:
+            # New page, new (empty) in-page stack: the old one went with it.
+            self._in_page_depth = 0
         self._watch(path)
         self._current = path
         self._page.document_path = path
         self._add_recent(path)
         self._render()
+        self._update_back_enabled()
 
     def _scroll_to_pending_fragment(self, ok: bool) -> None:
         """Honour a #fragment that arrived with a link to *another* document.
@@ -708,11 +718,42 @@ class MainWindow(QMainWindow):
     def _reload(self) -> None:
         self._render()
 
+    def _refresh_back_state(self) -> None:
+        """Ask the page how many in-page positions it is holding, and re-enable
+        Back accordingly. Asked rather than counted: the page is the only thing
+        that sees the clicks, so its stack is the truth."""
+        self._view.page().runJavaScript(
+            "window.__mlBackDepth ? window.__mlBackDepth() : 0", self._set_in_page_depth
+        )
+
+    def _set_in_page_depth(self, depth: object) -> None:
+        # runJavaScript hands back `object`; a number is what the page returns,
+        # and anything else means the script was not there to answer.
+        self._in_page_depth = int(depth) if isinstance(depth, (int, float)) else 0
+        self._update_back_enabled()
+
+    def _update_back_enabled(self) -> None:
+        self._back_action.setEnabled(bool(self._history) or self._in_page_depth > 0)
+
     def _go_back(self) -> None:
+        """Back means the previous position, which may be in this document.
+
+        The page is asked first: following an anchor is a move, and undoing it
+        should return to where the link was read rather than reopening whatever
+        was on screen before. Only if the page has no position left does this
+        fall through to the previous document.
+        """
+        self._view.page().runJavaScript(
+            "window.__mlBack ? window.__mlBack() : false", self._back_from_page
+        )
+
+    def _back_from_page(self, went_back: object) -> None:
+        if went_back:
+            self._refresh_back_state()
+            return
         if not self._history:
             return
         previous = self._history.pop()
-        self._back_action.setEnabled(bool(self._history))
         self.open_path(previous, record_history=False)
 
     # ── file watching (auto-reload) ──────────────────────────────────────────

@@ -93,6 +93,11 @@ MainWindow::MainWindow() {
             [this](const QString &p, const QString &frag) { openPath(p, true, frag); },
             Qt::QueuedConnection);
     m_view->setPage(m_page);
+    // A same-document #fragment click never reaches acceptNavigationRequest -
+    // Qt scrolls without asking - but it does change the page URL, so this is
+    // what tells us an in-page move happened and Back now has somewhere to go.
+    connect(m_page, &QWebEnginePage::urlChanged, this,
+            [this](const QUrl &) { refreshBackState(); });
     // Honour a #fragment that arrived with a link to *another* document.
     // Same-document anchors are handled by the view itself (see page.cpp); this
     // is the cross-file case, which cannot act until the new page is rendered.
@@ -323,13 +328,15 @@ void MainWindow::openPath(const QString &path, bool recordHistory, const QString
     m_pendingFragment = fragment;
     if (recordHistory && !m_current.isEmpty() && m_current != resolved) {
         m_history.append(m_current);
-        m_back->setEnabled(true);
     }
+    if (resolved != m_current)
+        m_inPageDepth = 0; // new page, new (empty) in-page stack
     watch(resolved);
     m_current = resolved;
     m_page->setDocumentPath(resolved);
     addRecent(resolved);
     render();
+    updateBackEnabled();
 }
 
 // --- recent files (persisted via QSettings) --------------------------------
@@ -452,12 +459,37 @@ void MainWindow::render() {
 
 void MainWindow::reload() { render(); }
 
+// Back means the previous position, which may be inside this document. The
+// page is asked first: following an anchor is a move, and undoing it should
+// return to where the link was read rather than reopening whatever was on
+// screen before. Only when the page has no position left does this fall
+// through to the previous document.
 void MainWindow::goBack() {
-    if (m_history.isEmpty())
-        return;
-    const QString previous = m_history.takeLast();
-    m_back->setEnabled(!m_history.isEmpty());
-    openPath(previous, /*recordHistory=*/false);
+    m_view->page()->runJavaScript(
+        QStringLiteral("window.__mlBack ? window.__mlBack() : false"),
+        [this](const QVariant &wentBack) {
+            if (wentBack.toBool()) {
+                refreshBackState();
+                return;
+            }
+            if (m_history.isEmpty())
+                return;
+            const QString previous = m_history.takeLast();
+            openPath(previous, /*recordHistory=*/false);
+        });
+}
+
+void MainWindow::refreshBackState() {
+    m_view->page()->runJavaScript(
+        QStringLiteral("window.__mlBackDepth ? window.__mlBackDepth() : 0"),
+        [this](const QVariant &depth) {
+            m_inPageDepth = depth.toInt();
+            updateBackEnabled();
+        });
+}
+
+void MainWindow::updateBackEnabled() {
+    m_back->setEnabled(!m_history.isEmpty() || m_inPageDepth > 0);
 }
 
 void MainWindow::watch(const QString &path) {

@@ -23,6 +23,9 @@ public:
 public slots:
     void openPath(const QString &path, bool recordHistory = true,
                   const QString &fragment = QString());
+    // Public alongside openPath so the smoke tests can drive the window the way
+    // a reader does: open something, click, go back.
+    void goBack();
 
 public:
     // Reopen the document last looked at. False when the recent list is empty
@@ -45,7 +48,8 @@ private:
     void showAbout();
     void render();
     void reload();
-    void goBack();
+    void refreshBackState();
+    void updateBackEnabled();
     void watch(const QString &path);
     void onFileChanged(const QString &changed);
 
@@ -89,5 +93,8 @@ private:
     // Held until loadFinished: the document is rendered with setHtml, so
     // there is nothing to scroll to until the new page exists.
     QString m_pendingFragment;
+    // How many in-page positions the page is holding for us. Asked of the page
+    // rather than counted here: it is the only thing that sees the clicks.
+    int m_inPageDepth = 0;
     bool m_autoReload = true;
 };
