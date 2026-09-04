@@ -214,11 +214,20 @@ fn refresh_recent(app: &AppHandle) {
 fn build_menu(app: &AppHandle) -> tauri::Result<()> {
     let auto = *app.state::<AppState>().auto_reload.lock().unwrap();
 
-    // MARKLENS_VERSION comes from build.rs; see there for why it is not the
-    // version in tauri.conf.json.
+    // The version and the build number go in separately, because every platform
+    // renders them as "<version> (<build>)" itself - macOS from the two
+    // NSAboutPanel keys, Windows and Linux by concatenating these two fields.
+    // Passing the combined string as the version alone got the build number
+    // printed twice on macOS: once inside our string, and once more in the
+    // parentheses the panel adds from CFBundleVersion.
+    //
+    // MARKLENS_BUILD is empty when there is no git to count commits with, which
+    // is the one case with nothing to put in the parentheses.
+    let build = env!("MARKLENS_BUILD");
     let about = AboutMetadataBuilder::new()
         .name(Some("Marklens"))
-        .version(Some(env!("MARKLENS_VERSION")))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .short_version((!build.is_empty()).then(|| build.to_owned()))
         .comments(Some(
             "A native Markdown viewer, Rust/Tauri port. One of three ports of the \
              same viewer - Python/PySide6, C++/Qt and Rust/Tauri - kept \

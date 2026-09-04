@@ -75,11 +75,20 @@ fn sync_shared_assets() {
 fn main() {
     sync_shared_assets();
 
-    let version = match build_number() {
+    // Two forms, because two consumers want it differently. The title bar wants
+    // one string; the About panel wants the build number on its own, so that it
+    // can go in the parentheses the platform draws rather than in parentheses
+    // of our own inside them.
+    let build = build_number();
+    let version = match &build {
         Some(build) => format!("{} ({})", env!("CARGO_PKG_VERSION"), build),
         None => env!("CARGO_PKG_VERSION").to_string(),
     };
     println!("cargo:rustc-env=MARKLENS_VERSION={version}");
+    println!(
+        "cargo:rustc-env=MARKLENS_BUILD={}",
+        build.unwrap_or_default()
+    );
 
     // Without these the number would be frozen at whatever the first build saw:
     // cargo only re-runs this script when something it was told to watch
