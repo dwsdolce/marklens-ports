@@ -137,10 +137,9 @@ macOS bundle identifier, so installing one never disturbs another.
 
 ## What has actually been run
 
-These scripts were written on Windows and have since been exercised on Linux.
-The applications they package are a separate matter — all three ports were
-developed on macOS, and it is the packaging, not the ports, that is untried
-there.
+These scripts were written on Windows and have since been exercised on Linux and
+on macOS. What follows is what was actually observed, platform by platform, so a
+reader can tell a tested path from a plausible one.
 
 Exercised on Windows 11, with CMake 4.4, Visual Studio 2026 (MSVC 14.51),
 Qt 6.11.1, Rust 1.97 and Inno Setup 6:
@@ -148,7 +147,7 @@ Qt 6.11.1, Rust 1.97 and Inno Setup 6:
 | Port   | Windows                                                    |
 |--------|------------------------------------------------------------|
 | Python | installer built, app launches from the frozen bundle       |
-| C++    | installer built, `ctest` 3/3, app launches from `dist/`    |
+| C++    | installer built, `ctest` 5/5, app launches from `dist/`    |
 | Rust   | installer built, fixtures 2/2                              |
 
 Exercised on Linux Mint 22.3 (Ubuntu 24.04 base, Cinnamon), with CMake 3.28.3,
@@ -160,6 +159,11 @@ rpm 4.18.2:
 | Python | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; 36 tests pass |
 | C++    | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; `ctest` 3/3; renders from the installed tree |
 | Rust   | AppImage, `.deb` and `.rpm` built; installed from the `.deb`; fixtures pass; opens a `.md` from the file manager |
+
+macOS packaging was run and proven on macOS during the month of development
+there, across all three ports. The toolchain versions and the per-port evidence
+are not written down yet — they need filling in from that machine, in the same
+shape as the two tables above.
 
 The `.rpm`s were built and their contents checked by extraction, but not
 installed: this is a Debian-family machine, and `rpm -i` on one is not a test

@@ -108,14 +108,16 @@ be told which to run. That flag is the reason these scripts exist: forget it
 and ctest reports "no tests were found" and exits cleanly, which reads like a
 broken checkout rather than a missing argument.
 
-Three tests, all headless — ctest sets the offscreen platform and the
+Five tests, all headless — ctest sets the offscreen platform and the
 QtWebEngine sandbox flags for the GUI ones:
 
 | Test | What it covers |
 |------|----------------|
-| `core` | The shared fixtures: 12 render cases and 11 link cases from `../shared/spec/fixtures/` |
+| `core` | The shared fixtures: 17 render cases and 11 link cases from `../shared/spec/fixtures/` |
 | `smoke` | Rendering — image, mermaid, table, syntax highlighting |
 | `navigation` | Clicks a link in a real `MainWindow` and verifies it navigates without trapping |
+| `fragment` | Follows `other.md#heading`: opens the document *and* lands on the heading |
+| `back` | Follows an in-page anchor, presses Back, and checks it returns to where the link was read |
 
 Run one directly with, e.g.,
 `QT_QPA_PLATFORM=offscreen ./build/nav_smoke`.
@@ -205,8 +207,9 @@ The installer format on top is separate again: Windows needs
 --output appimage` produces the AppImage itself. `packaging/setup` reports all
 of these. See [../packaging/README.md](../packaging/README.md) for signing.
 
-Only the Windows packaging path has actually been run; see the repository
-[README](../README.md) for what that means.
+All three packaging paths have been run: Windows and Linux are recorded in
+[../packaging/README.md](../packaging/README.md), and macOS was exercised during
+the port's own development on that platform.
 
 ## Notes
 
