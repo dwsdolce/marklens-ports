@@ -139,26 +139,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The Qt version is per-platform, and not by preference. 6.11.1 is what
-        # the ports are developed against and what Linux and macOS want: on
-        # 6.10.0 the navigation test segfaults on a headless Linux runner,
-        # QtWebEngine failing to make a GL context where 6.11.1 copes. Windows
-        # cannot have it, because Qt 6.11 reorganised its Windows repository -
-        # packages moved from a combined qt6_6111/qt6_6111/ directory into
-        # per-architecture ones - and aqtinstall 3.3.0, the newest there is,
-        # asks for the old path and gets a 404. So each platform takes the
-        # newest version that works on it, and Windows moves up when aqtinstall
-        # learns the new layout.
         include:
           - os: ubuntu-latest
             qt_arch: linux_gcc_64
-            qt_version: '6.11.1'
           - os: windows-latest
             qt_arch: win64_msvc2022_64
-            qt_version: '6.10.0'
           - os: macos-latest
             qt_arch: clang_64
-            qt_version: '6.11.1'
 
     steps:
       # Full history: CMakeLists derives the build number from
@@ -169,12 +156,30 @@ jobs:
 
       # WebEngine is not part of the base install and pulls in WebChannel and
       # Positioning, exactly as cpp/README.md tells a person installing Qt by
-      # hand. The version comes from the matrix, for the reasons recorded there.
+      # hand. 6.11.1 is what the ports are developed against, and testing the Qt
+      # that ships is the point.
+      #
+      # aqtsource, rather than the released aqtinstall, because Qt 6.11
+      # reorganised its Windows repository - packages moved out of a combined
+      # qt6_6111/qt6_6111/ directory into per-architecture ones - and released
+      # aqtinstall still asks for the old path and gets a 404. The fix is
+      # miurahr/aqtinstall#1000, merged 2026-03-24, and there has been no
+      # release since 3.3.0 in June 2025 to carry it. Pinned to the merge commit
+      # rather than a branch or a PR ref, so it cannot drift, and applied on
+      # every platform so all three install Qt with the same tool.
+      #
+      # Briefly the Windows job ran Qt 6.10.0 instead. That worked, but it meant
+      # testing a Qt we do not ship, and 6.10.0 segfaults QtWebEngine's GL setup
+      # on a headless Linux runner, so it could not be used everywhere either.
+      #
+      # .github/workflows/aqt-release-watch.yml says when this can become a
+      # plain `aqtversion: '>=3.4'`.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: ${{ matrix.qt_version }}
+          version: '6.11.1'
           arch: ${{ matrix.qt_arch }}
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
           modules: qtwebengine qtwebchannel qtpositioning
           cache: true
 
