@@ -335,10 +335,18 @@ class MainWindow(QMainWindow):
 
         # Restore the display mode chosen last time. Not remembered again here,
         # which would be writing back what was just read.
+        # QSettings hands back object; a store written by hand could hold
+        # anything, so an unreadable value falls back rather than raising.
         stored = QSettings().value(
             "toolBarStyle", Qt.ToolButtonStyle.ToolButtonIconOnly.value
         )
-        self._set_toolbar_style(Qt.ToolButtonStyle(int(stored)), remember=False)
+        style = Qt.ToolButtonStyle.ToolButtonIconOnly
+        if isinstance(stored, (int, str)):
+            try:
+                style = Qt.ToolButtonStyle(int(stored))
+            except ValueError:
+                pass
+        self._set_toolbar_style(style, remember=False)
 
         self._build_find_bar()
 
@@ -473,11 +481,11 @@ class MainWindow(QMainWindow):
         return menu
 
     def _update_doc_button(self) -> None:
-        open_ = self._current is not None
+        current = self._current
         # U+25BE, the small triangle macOS uses to mark a pull-down.
-        self._doc_button.setText(f"{self._current.name}  \u25be" if open_ else "")
-        self._doc_button.setEnabled(open_)
-        self._doc_button.setVisible(open_)  # nothing to name, nothing to show
+        self._doc_button.setText(f"{current.name}  \u25be" if current else "")
+        self._doc_button.setEnabled(current is not None)
+        self._doc_button.setVisible(current is not None)  # nothing to name, nothing to show
 
     def _build_path_menu(self) -> None:
         """The file, then each enclosing folder out to the root.

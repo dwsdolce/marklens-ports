@@ -94,6 +94,29 @@ event loop is running. Reopening at once would show the previous document first
 and push it back to the top of the recent list, so the reopen is deferred
 briefly and stands down if a document turns up in the meantime.
 
+## Opening a second document
+
+One document, one process. Asking the system to open a `.md` while a document is
+already showing starts another copy of the application rather than replacing
+what is on screen: the two documents are unrelated, and replacing in place would
+put a file you never navigated to on the Back stack, where Back means "the page
+I came from".
+
+Following a link is the opposite case and does replace in place - that is what
+Back exists for.
+
+Windows and Linux get this for nothing. They have no single-instance rule, so a
+file manager simply runs the executable again. macOS routes every document to
+the copy already running and delivers it as an Apple Event, so there the
+application has to ask for a second instance itself, with `open -n -a`. An empty
+window is the one exception on any platform: it has nothing to displace, so the
+document opens into it.
+
+The cost is one webview engine per document - a couple of hundred megabytes for
+the Qt ports. That is the price of the model Windows and Linux already had, and
+it buys a port with no per-window state anywhere: no window list, no map from
+window to document, no question about which window a menu command acts on.
+
 ## Empty state
 
 With nothing to reopen - a first run, or a list whose every entry has since

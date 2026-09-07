@@ -477,6 +477,11 @@ async function showHelp() {
 listen("open-file", (e) => show(e.payload));
 listen("reload", () => actions.reload());
 listen("back", goBack);
+// Only the article scales; the toolbar and find bar keep their size, matching
+// the Qt ports, whose toolbar is native and outside the zoomed view.
+listen("zoom", (e) => {
+  content.style.zoom = String(e.payload);
+});
 listen("find", focusFind);
 listen("find-next", () => findText(false));
 listen("find-prev", () => findText(true));

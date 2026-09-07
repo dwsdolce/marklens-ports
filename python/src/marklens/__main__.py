@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
-from PySide6.QtCore import QEvent, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QCoreApplication, QEvent, QTimer
+from PySide6.QtGui import QFileOpenEvent, QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import assets
@@ -43,15 +45,64 @@ class _Application(QApplication):
     def set_window(self, window: MainWindow) -> None:
         self._window = window
         if self._pending is not None:
-            window.open_path(self._pending)
+            self._open_document(self._pending)
             self._pending = None
+
+    def _open_document(self, path: Path) -> None:
+        """Give a document the system hands over an instance of its own.
+
+        There is no relationship between it and whatever is already open, so
+        replacing the document in place would put an unrelated file on the Back
+        stack, and Back means "the page I came from". Following a link is the
+        opposite case and still replaces in place.
+
+        Windows and Linux reach this the other way round and never get here at
+        all: having no single-instance rule, their file managers simply run the
+        executable again. macOS routes every document to the application already
+        running, so a second instance has to be asked for.
+        """
+        assert self._window is not None
+        # An empty window has nothing to displace, and leaving one behind while
+        # a second instance starts is what no document application does.
+        if not self._window.has_document():
+            self._raise(self._window, path)
+            return
+        if not self._start_new_instance(path):
+            self._raise(self._window, path)  # no bundle to start: see below
+
+    @staticmethod
+    def _start_new_instance(path: Path) -> bool:
+        """False when there is no application bundle to start.
+
+        That is a development build run from the source tree, where opening in
+        place is the only thing left - and is what happened before this existed.
+        """
+        bundle = Path(QCoreApplication.applicationDirPath()).parent.parent
+        if bundle.suffix != ".app":
+            return False
+        try:
+            # -n is what overrides the single-instance rule; without it the open
+            # is handed straight back to this process and nothing happens.
+            subprocess.Popen(["/usr/bin/open", "-n", "-a", str(bundle), str(path)])
+        except OSError:
+            return False
+        return True
+
+    @staticmethod
+    def _raise(window: MainWindow, path: Path) -> None:
+        window.open_path(path)
+        window.show()
+        window.raise_()
+        window.activateWindow()
 
     def event(self, e: QEvent) -> bool:
         if e.type() == QEvent.Type.FileOpen:
-            path = e.file()
+            # Only QFileOpenEvent carries a file, and the type check above is
+            # what guarantees this is one.
+            path = cast(QFileOpenEvent, e).file()
             if path:
                 if self._window is not None:
-                    self._window.open_path(Path(path))
+                    self._open_document(Path(path))
                 else:
                     self._pending = Path(path)
             return True

@@ -398,6 +398,33 @@ fn absolute(path: &str) -> String {
     text.strip_prefix(r"\\?\").map(str::to_owned).unwrap_or(text)
 }
 
+/// Ask macOS for another copy of this application, showing `path`.
+///
+/// False when there is no application bundle to start, which is a development
+/// build run straight from the target directory. Opening in place is then the
+/// only thing left, and is what happened before this existed.
+#[cfg(target_os = "macos")]
+fn start_new_instance(path: &str) -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    // <app>.app/Contents/MacOS/<exe>
+    let Some(bundle) = exe.parent().and_then(Path::parent).and_then(Path::parent) else {
+        return false;
+    };
+    if bundle.extension().and_then(|e| e.to_str()) != Some("app") {
+        return false;
+    }
+    // -n is what overrides the single-instance rule; without it the open is
+    // handed straight back to this process and nothing happens.
+    std::process::Command::new("/usr/bin/open")
+        .args(["-n", "-a"])
+        .arg(bundle)
+        .arg(path)
+        .spawn()
+        .is_ok()
+}
+
 /// Open one of the folders from the document's path menu in the file manager.
 #[tauri::command]
 fn open_folder(app: AppHandle, path: String) {
@@ -424,9 +451,12 @@ fn zoom(app: &AppHandle, direction: i32) {
         -1 => (*z / 1.1).max(0.3),
         _ => 1.0,
     };
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_zoom(*z);
-    }
+    // Not the webview's own zoom, which scales everything in it - and in this
+    // port the toolbar and the find bar are in it, so they grew with the text.
+    // The Qt ports zoom only their document view, their toolbar being native
+    // widgets outside it. The frontend is the only thing here that can tell the
+    // document from the chrome, so it applies this to the article alone.
+    let _ = app.emit("zoom", *z);
 }
 
 // ── recent files (persisted JSON) ────────────────────────────────────────────
@@ -585,6 +615,25 @@ fn main() {
                 return;
             };
             let path = path.to_string_lossy().into_owned();
+
+            // A document the system hands over gets an instance of its own,
+            // because there is no relationship between it and whatever is
+            // already open: replacing the document in place would put an
+            // unrelated file on the Back stack, and Back means "the page I came
+            // from". Following a link is the opposite case and still replaces.
+            //
+            // Windows and Linux never reach here at all: having no
+            // single-instance rule, their file managers simply run the
+            // executable again, which is the behaviour this reproduces.
+            //
+            // `current` is empty only before the frontend has rendered
+            // anything, which is the launch case - the document that started
+            // the application belongs in this instance, not a second one.
+            let showing = app.state::<AppState>().current.lock().unwrap().is_some();
+            if showing && start_new_instance(&path) {
+                return;
+            }
+
             // Both routes, because which one lands depends on how far the
             // frontend has got. It registers its open-file listener before it
             // asks for the initial document, so an event that arrives after the
