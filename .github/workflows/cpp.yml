@@ -41,10 +41,21 @@ jobs:
       # WebEngine is not part of the base install and pulls in WebChannel and
       # Positioning, exactly as cpp/README.md tells a person installing Qt by
       # hand. The version matches what the ports are developed against.
+      #
+      # 6.10.0 rather than the 6.11.1 the ports are developed against, because
+      # Qt 6.11 reorganised its Windows repository: the packages moved from a
+      # combined qt6_6111/qt6_6111/ directory into per-architecture ones such as
+      # qt6_6111_msvc2022_64/, and aqtinstall 3.3.0 - the newest there is - still
+      # asks for the old path and gets a 404. Linux and macOS kept the old
+      # layout, which is why they installed 6.11.1 happily while Windows failed
+      # with "Failed to locate XML data for Qt version". One version across the
+      # matrix is worth more than matching the development machine exactly: what
+      # this catches is compiler and platform difference, not the point release.
+      # Bump it when aqtinstall learns the new layout.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.1'
+          version: '6.10.0'
           arch: ${{ matrix.qt_arch }}
           modules: qtwebengine qtwebchannel qtpositioning
           cache: true
