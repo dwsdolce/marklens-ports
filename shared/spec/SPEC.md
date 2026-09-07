@@ -127,6 +127,26 @@ the Qt ports. That is the price of the model Windows and Linux already had, and
 it buys a port with no per-window state anywhere: no window list, no map from
 window to document, no question about which window a menu command acts on.
 
+### A document can be open twice
+
+The second cost, and the one that is not obvious. "Show me that rather than a
+second copy of it" can only be honoured for the document *this* process is
+showing, because processes cannot see each other. Open A, open B from it, then
+open A again from B, and a second copy of A appears: the instance being asked
+has no way to know the first one already has it.
+
+Accepted rather than fixed. Detecting it would mean a registry of open documents
+somewhere shared, which is easy; acting on it would mean bringing another
+process's window forward, which is per-platform work in three languages, plus
+handling entries left behind by an instance that died. That is the
+cross-process coordination this model exists to avoid, reintroduced to solve a
+redundant window in a viewer that cannot edit anything. The document is
+read-only, so the duplicate costs a close.
+
+The alternative - one process with several windows - has no such problem, one
+process knowing all of its own documents. It was weighed and rejected: it needs
+per-window state everywhere, which the Rust port in particular does not have.
+
 ## Empty state
 
 With nothing to reopen - a first run, or a list whose every entry has since
