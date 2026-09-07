@@ -52,8 +52,14 @@ datas = [
     (os.path.join(shared, "icons"), os.path.join("shared", "icons")),
     (os.path.join(shared, "icon-py.png"), "shared"),
 ]
-for name in ("help.html", "help_default_macos.html", "help_default_windows.html",
-             "help_default_linux.html"):
+# Every platform's snippets, not just this one's: a frozen bundle is built on
+# the platform it ships for, but the substitution reads by name at runtime and a
+# missing file would leave a raw <!--SHORTCUTS--> comment in the help window.
+for name in ("help.html",
+             "help_default_macos.html", "help_default_windows.html",
+             "help_default_linux.html",
+             "help_keys_macos.html", "help_keys_windows.html",
+             "help_keys_linux.html"):
     datas.append((os.path.join(shared, name), "shared"))
 
 # The build number, read back by marklens.__build__ for the About box. A frozen

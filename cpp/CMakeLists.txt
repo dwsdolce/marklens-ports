@@ -298,6 +298,9 @@ install(FILES
     "${SHARED_DIR}/help_default_macos.html"
     "${SHARED_DIR}/help_default_windows.html"
     "${SHARED_DIR}/help_default_linux.html"
+    "${SHARED_DIR}/help_keys_macos.html"
+    "${SHARED_DIR}/help_keys_windows.html"
+    "${SHARED_DIR}/help_keys_linux.html"
     DESTINATION "${MARKLENS_ASSET_DEST}"
 )
 

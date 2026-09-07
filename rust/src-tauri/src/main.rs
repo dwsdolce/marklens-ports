@@ -161,7 +161,17 @@ fn help_html() -> String {
     } else {
         include_str!("../../../shared/help_default_linux.html")
     };
+    // Per-platform because the shortcuts are: F5 reloads on Windows and Linux
+    // where macOS uses Cmd+R, which is also what this port's menu now binds.
+    let keys = if cfg!(target_os = "macos") {
+        include_str!("../../../shared/help_keys_macos.html")
+    } else if cfg!(target_os = "windows") {
+        include_str!("../../../shared/help_keys_windows.html")
+    } else {
+        include_str!("../../../shared/help_keys_linux.html")
+    };
     base.replace("<!--DEFAULT_APP_STEPS-->", steps)
+        .replace("<!--SHORTCUTS-->", keys)
 }
 
 // ── menu ────────────────────────────────────────────────────────────────────
@@ -266,10 +276,21 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         *state.auto_reload_item.lock().unwrap() = Some(auto_item.clone());
     }
 
+    // Native conventions, matching what QKeySequence::StandardKey already gives
+    // the Qt ports: F5 reloads and F3 finds again on Windows and Linux, while
+    // macOS uses Cmd+R and Cmd+G. Hardcoding the macOS form everywhere is what
+    // made the three ports disagree about three keys, and made one shared help
+    // table impossible to write truthfully.
+    #[cfg(target_os = "macos")]
+    let (reload_key, find_next_key, find_prev_key) =
+        ("CmdOrCtrl+R", "CmdOrCtrl+G", "CmdOrCtrl+Shift+G");
+    #[cfg(not(target_os = "macos"))]
+    let (reload_key, find_next_key, find_prev_key) = ("F5", "F3", "Shift+F3");
+
     let file = SubmenuBuilder::new(app, "File")
         .item(&MenuItemBuilder::with_id("open", "Open…").accelerator("CmdOrCtrl+O").build(app)?)
         .item(&recent_menu)
-        .item(&MenuItemBuilder::with_id("reload", "Reload").accelerator("CmdOrCtrl+R").build(app)?)
+        .item(&MenuItemBuilder::with_id("reload", "Reload").accelerator(reload_key).build(app)?)
         .item(&auto_item)
         .separator()
         .item(&MenuItemBuilder::with_id("export_pdf", "Export as PDF…").accelerator("CmdOrCtrl+Shift+E").build(app)?)
@@ -283,8 +304,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .select_all()
         .separator()
         .item(&MenuItemBuilder::with_id("find", "Find…").accelerator("CmdOrCtrl+F").build(app)?)
-        .item(&MenuItemBuilder::with_id("find_next", "Find Next").accelerator("CmdOrCtrl+G").build(app)?)
-        .item(&MenuItemBuilder::with_id("find_prev", "Find Previous").accelerator("CmdOrCtrl+Shift+G").build(app)?)
+        .item(&MenuItemBuilder::with_id("find_next", "Find Next").accelerator(find_next_key).build(app)?)
+        .item(&MenuItemBuilder::with_id("find_prev", "Find Previous").accelerator(find_prev_key).build(app)?)
         .build()?;
 
     let view = SubmenuBuilder::new(app, "View")

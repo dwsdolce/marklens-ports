@@ -4,12 +4,21 @@ rendered, with syntax highlighting and Mermaid diagrams.</p>
 
 <h2>Opening &amp; navigating</h2>
 <ul>
-  <li><b>Open</b> a file from <i>File &#9656; Open</i> (&#8984;O), or pass one on
-      the command line.</li>
+  <li><b>Open</b> a file from <i>File &#9656; Open</i>, or pass one on the
+      command line.</li>
   <li><b>Links to other documents</b> open in the viewer; use
-      <i>View &#9656; Back</i> (&#8984;[) to return.</li>
+      <i>View &#9656; Back</i> to return.</li>
+  <li><b>Links to a heading</b> jump to it &mdash; both within the document
+      (<code>#installing</code>) and into another one
+      (<code>setup.md#installing</code>).</li>
   <li><b>External links</b> (http, mailto&hellip;) open in your web browser.</li>
   <li><b>Images and links</b> resolve relative to the document&rsquo;s folder.</li>
+  <li><b>Back</b> returns to where you were reading, not just to the previous
+      document: following a heading link and then going back lands on the link,
+      not at the top.</li>
+  <li><b>File &#9656; Open Recent</b> lists what you have read lately. All three
+      Marklens ports share one list, so a document opened in one appears in the
+      others.</li>
   <li>The view <b>reloads automatically</b> when the file changes on disk.</li>
 </ul>
 
@@ -19,12 +28,4 @@ rendered, with syntax highlighting and Mermaid diagrams.</p>
 (Requires Marklens to be installed as an application.)</p>
 
 <h2>Keyboard shortcuts</h2>
-<table cellpadding="4">
-  <tr><td>Open file&hellip;</td><td><code>&#8984;O</code></td></tr>
-  <tr><td>Reload</td><td><code>&#8984;R</code></td></tr>
-  <tr><td>Find</td><td><code>&#8984;F</code></td></tr>
-  <tr><td>Zoom in / out / actual size</td>
-      <td><code>&#8984;=</code> / <code>&#8984;&#8722;</code> / <code>&#8984;0</code></td></tr>
-  <tr><td>Export as PDF</td><td><code>&#8984;&#8679;E</code></td></tr>
-  <tr><td>Back to previous document</td><td><code>&#8984;[</code></td></tr>
-</table>
+<!--SHORTCUTS-->  <!-- each port substitutes its OS-specific table -->

@@ -27,6 +27,30 @@ const reloadBtn = document.getElementById("reload-btn");
   const revealBtn = document.getElementById("reveal-btn");
   revealBtn.title = label;
   revealBtn.querySelector(".label").textContent = label;
+
+  // Tooltips carry the shortcut, and the shortcut is not the same everywhere:
+  // the menu binds F5 off macOS, matching the platform convention the Qt ports
+  // get from QKeySequence. Hardcoding the Cmd form in the markup told a Windows
+  // reader to press a key that does nothing.
+  const mac = /Mac/.test(ua);
+  const mod = mac ? "⌘" : "Ctrl+";
+  const keys = {
+    open: mac ? "⌘O" : "Ctrl+O",
+    back: mac ? "⌘[" : "Ctrl+[",
+    find: mac ? "⌘F" : "Ctrl+F",
+    "zoom-out": mod + "−",
+    "zoom-in": mod + "=",
+    "zoom-reset": mod + "0",
+    print: mac ? "⌘⇧E" : "Ctrl+Shift+E",
+    reload: mac ? "⌘R" : "F5",
+  };
+  for (const [act, key] of Object.entries(keys)) {
+    const button = document.querySelector('[data-act="' + act + '"]');
+    if (!button) continue;
+    // Keep the descriptive half of the existing title, replace the key.
+    const name = (button.title || "").replace(/ *\([^)]*\)$/, "") || act;
+    button.title = name + " (" + key + ")";
+  }
 }
 
 let currentDoc = null;

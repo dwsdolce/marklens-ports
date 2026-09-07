@@ -43,8 +43,10 @@ def icons_dir() -> Path:
 
 
 def help_html() -> str:
-    """The shared help document with the OS-specific 'set as default' steps
-    substituted in for the current platform."""
+    """The shared help document with the OS-specific pieces substituted in for
+    the current platform: the 'set as default' steps, and the shortcut table -
+    which is per-platform because the shortcuts are, F5 reloading on Windows
+    and Linux where macOS uses Cmd+R."""
     shared = _shared_dir()
     if sys.platform == "darwin":
         os_name = "macos"
@@ -53,4 +55,10 @@ def help_html() -> str:
     else:
         os_name = "linux"
     steps = (shared / f"help_default_{os_name}.html").read_text()
-    return (shared / "help.html").read_text().replace("<!--DEFAULT_APP_STEPS-->", steps)
+    keys = (shared / f"help_keys_{os_name}.html").read_text()
+    return (
+        (shared / "help.html")
+        .read_text()
+        .replace("<!--DEFAULT_APP_STEPS-->", steps)
+        .replace("<!--SHORTCUTS-->", keys)
+    )

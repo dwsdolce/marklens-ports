@@ -89,8 +89,14 @@ QString helpHtml() {
 #else
     const QString os = "linux";
 #endif
+    // Two OS-specific pieces: the "set as default" steps, and the shortcut
+    // table - per-platform because the shortcuts are, F5 reloading on Windows
+    // and Linux where macOS uses Cmd+R.
     const QString steps = readFile(shared + "/help_default_" + os + ".html");
-    return readFile(shared + "/help.html").replace("<!--DEFAULT_APP_STEPS-->", steps);
+    const QString keys = readFile(shared + "/help_keys_" + os + ".html");
+    return readFile(shared + "/help.html")
+        .replace("<!--DEFAULT_APP_STEPS-->", steps)
+        .replace("<!--SHORTCUTS-->", keys);
 }
 
 } // namespace assets
