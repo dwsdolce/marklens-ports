@@ -2,6 +2,7 @@
 
 #include "assets.h"
 #include "page.h"
+#include "settings.h"
 #include "renderer.h"
 #include "titles.h"
 
@@ -32,7 +33,6 @@
 #include <QSize>
 #include <QSizePolicy>
 #include <QSet>
-#include <QSettings>
 #include <QTextBrowser>
 #include <QToolBar>
 #include <QToolButton>
@@ -276,7 +276,7 @@ void MainWindow::buildUi() {
     // Restore the display mode chosen last time. Not remembered again here,
     // which would be writing back what was just read.
     setToolBarStyle(static_cast<Qt::ToolButtonStyle>(
-                        QSettings().value("toolBarStyle", Qt::ToolButtonIconOnly).toInt()),
+                        settings::toolBarStyle(Qt::ToolButtonIconOnly)),
                     false);
 
     buildFindBar();
@@ -386,55 +386,17 @@ void MainWindow::openPath(const QString &path, bool recordHistory, const QString
     updateBackEnabled();
 }
 
-// --- recent files (persisted via QSettings) --------------------------------
-
-namespace {
-
-// This port and the Python one share a single QSettings store - same
-// organisation and application name - but reach it spelling paths differently:
-// Qt hands back forward slashes (QFileDialog, QUrl::toLocalFile) while Python's
-// str(Path) is native, so on Windows the same document landed in the list
-// twice. Forward slashes are the canonical form because that is what the rest
-// of this file already works with; converting instead would change m_current
-// and break the same-document fragment check in page.cpp.
-QString canonicalRecent(const QString &path) {
-    return QDir::fromNativeSeparators(path);
-}
-
-// Windows filenames are case-insensitive as well, so the comparison key folds
-// case there and nowhere else.
-QString recentKey(const QString &path) {
-#if defined(Q_OS_WIN)
-    return canonicalRecent(path).toLower();
-#else
-    return canonicalRecent(path);
-#endif
-}
-
-// Read the stored list, canonicalising and de-duplicating as it goes, so a list
-// written by an older build (or by the Python port) is cleaned up on sight
-// rather than needing a migration step.
-QStringList loadRecent() {
-    QStringList out;
-    QSet<QString> seen;
-    for (const QString &path : QSettings().value("recentFiles").toStringList()) {
-        const QString canonical = canonicalRecent(path);
-        if (!seen.contains(recentKey(canonical))) {
-            seen.insert(recentKey(canonical));
-            out << canonical;
-        }
-    }
-    return out;
-}
-
-} // namespace
+// --- recent files (persisted in the shared settings file) ------------------
+//
+// The spelling and de-duplication rules live in settings.cpp, where all three
+// ports can agree on them; this file only decides when to read and write.
 
 // Reopen the document last looked at, which is what the Swift app does and
 // what the recent list is already there to remember. The list outlives the
 // files in it - renamed, deleted, on a volume that is not mounted - so it is
 // walked until something opens rather than trusting the first entry.
 bool MainWindow::openMostRecent() {
-    for (const QString &path : loadRecent()) {
+    for (const QString &path : settings::recentFiles()) {
         if (QFileInfo::exists(path)) {
             openPath(path);
             return true;
@@ -444,25 +406,13 @@ bool MainWindow::openMostRecent() {
 }
 
 void MainWindow::addRecent(const QString &path) {
-    const QString canonical = canonicalRecent(path);
-    const QString key = recentKey(canonical);
-
-    QStringList recent;
-    for (const QString &existing : loadRecent()) {
-        if (recentKey(existing) != key)
-            recent << existing;
-    }
-    recent.prepend(canonical);
-    while (recent.size() > 10)
-        recent.removeLast();
-
-    QSettings().setValue("recentFiles", recent);
+    settings::addRecent(path);
     rebuildRecentMenu();
 }
 
 void MainWindow::rebuildRecentMenu() {
     m_recentMenu->clear();
-    const QStringList recent = loadRecent();
+    const QStringList recent = settings::recentFiles();
     if (recent.isEmpty()) {
         m_recentMenu->addAction("No Recent Documents")->setEnabled(false);
         return;
@@ -477,7 +427,7 @@ void MainWindow::rebuildRecentMenu() {
 }
 
 void MainWindow::clearRecent() {
-    QSettings().remove("recentFiles");
+    settings::clearRecent();
     rebuildRecentMenu();
 }
 
@@ -559,11 +509,18 @@ void MainWindow::onFileChanged(const QString &changed) {
 }
 
 void MainWindow::openDialog() {
+    // An empty directory does not mean "wherever you were last": Qt substitutes
+    // its own last-visited path, which is per-process and resets to the working
+    // directory - the install folder - on every launch. The folder is
+    // remembered explicitly instead, in the file all three ports share, so the
+    // three agree about where browsing starts.
     const QString name = QFileDialog::getOpenFileName(
-        this, "Open Markdown", QString(),
+        this, "Open Markdown", settings::lastOpenDir(),
         "Markdown (*.md *.markdown *.mdown *.mkd);;All files (*)");
-    if (!name.isEmpty())
+    if (!name.isEmpty()) {
+        settings::setLastOpenDir(QFileInfo(name).absolutePath());
         openDocumentRequest(name);
+    }
 }
 
 void MainWindow::zoom(int direction) {
@@ -729,7 +686,7 @@ void MainWindow::setToolBarStyle(Qt::ToolButtonStyle style, bool remember) {
     // open document, which is the one thing the title bar no longer says.
     m_docButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     if (remember)
-        QSettings().setValue("toolBarStyle", static_cast<int>(style));
+        settings::setToolBarStyle(static_cast<int>(style));
 }
 
 void MainWindow::updateDocButton() {

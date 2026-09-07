@@ -3,4 +3,5 @@
 
 pub mod links;
 pub mod renderer;
+pub mod settings;
 pub mod titles;

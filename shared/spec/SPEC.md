@@ -255,6 +255,53 @@ hits in the DOM itself and colours the active one apart from the rest.
   contract.
 - `fixtures/link_cases.json` — (href, document path) → resolved path or null.
 
+## Settings (one file, all three ports)
+
+The ports share their persistent state, so an Open Recent list or a remembered
+folder is one list and one folder however you got there. The file is plain JSON,
+because the alternative - Qt's `QSettings` - has no backend a Rust program can
+read: a registry key on Windows, a plist on macOS, an INI file on Linux.
+
+| Platform | Path |
+|----------|------|
+| Windows  | `%LOCALAPPDATA%\Marklens\settings.json` |
+| macOS    | `~/Library/Preferences/Marklens/settings.json` |
+| Linux    | `${XDG_CONFIG_HOME:-~/.config}/Marklens/settings.json` |
+
+That is what Qt calls `GenericConfigLocation` and what Rust's
+`dirs::preference_dir()` returns; the two were **measured** to agree on all
+three platforms rather than assumed to. Tauri's own `app_config_dir` is keyed by
+bundle identifier and cannot agree, so the Rust port derives the path itself.
+`MARKLENS_SETTINGS` overrides it, which is what the tests use.
+
+Keys:
+
+| Key | Written by | Meaning |
+|-----|-----------|---------|
+| `recentFiles` | all three | Newest first, at most 10 |
+| `lastOpenDir` | all three | Where the Open dialog starts |
+| `toolBarStyle` | the Qt ports | Qt's `ToolButtonStyle`; ignored elsewhere |
+
+Three rules every port implements, and each port's tests pin down:
+
+- **One spelling.** Paths are stored with forward slashes. Qt hands them back
+  that way and Python's `str(Path)` does not, so without a rule the same
+  document appears twice on Windows.
+- **De-duplication folds case on Windows** and nowhere else, because that is
+  where filenames are case-insensitive.
+- **Writes are read-modify-write.** The file holds keys a given port does not
+  own, and replacing the whole document would discard them.
+
+Three applications can hold the file at once; the last writer wins, so a change
+made in one is seen by another when that other next reads. Nothing tries harder
+than that: this is a recent-files list, not a database.
+
+An Open dialog must ask for `lastOpenDir` explicitly. Left to itself Qt
+substitutes its own last-visited directory, which is per-process and resets to
+the working directory - the install folder - on every launch, while the native
+Windows dialog would use its own per-executable history that the other ports
+cannot see.
+
 ## Testing
 
 Two layers, and the ports are not level with each other on the second.

@@ -96,13 +96,6 @@ divergences and one gap in the tests.
   bugs here have presented. See the Testing section of
   [shared/spec/SPEC.md](shared/spec/SPEC.md).
 
-- **Recent files are shared between the Qt ports but not with Rust.** The C++
-  and Python ports both use `QSettings` under `Marklens/Marklens`, so they
-  share one list; the Rust port keeps its own JSON under Tauri's
-  `app_config_dir`. Deliberate for now — unifying them means pinning one path
-  in `shared/spec/SPEC.md`, because `dirs`, `platformdirs` and `QStandardPaths`
-  disagree about where config belongs on Windows and macOS.
-
 - **The ports render fewer image formats than the macOS original.** They render
   PNG, JPEG, GIF, WebP, BMP, ICO and SVG — the set `shared/spec/SPEC.md`
   requires — and a `.tif` shows a broken-image icon. Images are decoded by the

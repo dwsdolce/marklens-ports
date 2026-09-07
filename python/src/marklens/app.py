@@ -9,7 +9,6 @@ to the system browser, other documents into the viewer.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +16,6 @@ from pathlib import Path
 from PySide6.QtCore import (
     QCoreApplication,
     QFileSystemWatcher,
-    QSettings,
     QSize,
     Qt,
     QUrl,
@@ -51,7 +49,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version_string__, assets, links, renderer
+from . import __version_string__, assets, links, renderer, settings
 
 _MARKDOWN_SUFFIXES = {".md", ".markdown", ".mdown", ".mkd", ".txt"}
 
@@ -344,11 +342,10 @@ class MainWindow(QMainWindow):
 
         # Restore the display mode chosen last time. Not remembered again here,
         # which would be writing back what was just read.
-        # QSettings hands back object; a store written by hand could hold
-        # anything, so an unreadable value falls back rather than raising.
-        stored = QSettings().value(
-            "toolBarStyle", Qt.ToolButtonStyle.ToolButtonIconOnly.value
-        )
+        # The shared file could hold anything - it is three applications' worth
+        # of state in plain JSON - so an unreadable value falls back rather
+        # than raising.
+        stored = settings.toolbar_style(Qt.ToolButtonStyle.ToolButtonIconOnly.value)
         style = Qt.ToolButtonStyle.ToolButtonIconOnly
         if isinstance(stored, (int, str)):
             try:
@@ -450,7 +447,7 @@ class MainWindow(QMainWindow):
         # longer says.
         self._doc_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         if remember:
-            QSettings().setValue("toolBarStyle", style.value)
+            settings.set_toolbar_style(style.value)
 
     def _show_context_menu(self, pos) -> None:
         self._build_context_menu().exec(self._view.mapToGlobal(pos))
@@ -542,50 +539,13 @@ class MainWindow(QMainWindow):
     def _toggle_zoom(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
-    # ── recent files (persisted via QSettings) ───────────────────────────────
-
-    _RECENT_KEY = "recentFiles"
-    _RECENT_MAX = 10
-
-    @staticmethod
-    def _canonical_recent(path: str | Path) -> str:
-        """The one spelling both Qt ports agree to store.
-
-        This port and the C++ one share a single QSettings store - same
-        organisation and application name - but reached it spelling paths
-        differently: Qt hands back forward slashes (QFileDialog,
-        QUrl::toLocalFile) while ``str(Path)`` is native, so on Windows the
-        same document landed in the list twice. Forward slashes win because
-        that is what the C++ side already works with internally.
-        """
-        return Path(path).as_posix()
-
-    @staticmethod
-    def _recent_key(path: str) -> str:
-        """Comparison key for de-duplication.
-
-        ``normcase`` folds both separators and case on Windows, where
-        filenames are case-insensitive, and is the identity elsewhere.
-        """
-        return os.path.normcase(path)
+    # ── recent files (persisted in the shared settings file) ─────────────────
+    #
+    # The spelling and de-duplication rules live in settings.py, where all three
+    # ports can agree on them; this class only decides when to read and write.
 
     def _load_recent(self) -> list[str]:
-        val = QSettings().value(self._RECENT_KEY)
-        if val is None:
-            return []
-        raw = [val] if isinstance(val, str) else list(val)
-        # Canonicalise and de-duplicate on read, so a list written by an older
-        # build (or by the C++ port) is cleaned up on sight rather than needing
-        # a migration step. First occurrence wins: the list is newest-first.
-        seen: set[str] = set()
-        recent: list[str] = []
-        for entry in raw:
-            canonical = self._canonical_recent(entry)
-            key = self._recent_key(canonical)
-            if key not in seen:
-                seen.add(key)
-                recent.append(canonical)
-        return recent
+        return settings.recent_files()
 
     def open_most_recent(self) -> bool:
         """Reopen the document last looked at.
@@ -606,11 +566,7 @@ class MainWindow(QMainWindow):
         return self._current is not None
 
     def _add_recent(self, path: Path) -> None:
-        canonical = self._canonical_recent(path)
-        key = self._recent_key(canonical)
-        recent = [p for p in self._load_recent() if self._recent_key(p) != key]
-        recent.insert(0, canonical)
-        QSettings().setValue(self._RECENT_KEY, recent[: self._RECENT_MAX])
+        settings.add_recent(path)
         self._rebuild_recent_menu()
 
     def _rebuild_recent_menu(self) -> None:
@@ -630,7 +586,7 @@ class MainWindow(QMainWindow):
         self._recent_menu.addAction("Clear Menu", self._clear_recent)
 
     def _clear_recent(self) -> None:
-        QSettings().remove(self._RECENT_KEY)
+        settings.clear_recent()
         self._rebuild_recent_menu()
 
     def _show_help(self) -> None:
@@ -855,10 +811,19 @@ class MainWindow(QMainWindow):
     def _open_dialog(self) -> None:
         from PySide6.QtWidgets import QFileDialog
 
+        # An empty directory does not mean "wherever you were last": Qt
+        # substitutes its own last-visited path, which is per-process and resets
+        # to the working directory - the install folder - on every launch. The
+        # folder is remembered explicitly instead, in the file all three ports
+        # share, so the three agree about where browsing starts.
         name, _ = QFileDialog.getOpenFileName(
-            self, "Open Markdown", "", "Markdown (*.md *.markdown *.mdown *.mkd);;All files (*)"
+            self,
+            "Open Markdown",
+            settings.last_open_dir(),
+            "Markdown (*.md *.markdown *.mdown *.mkd);;All files (*)",
         )
         if name:
+            settings.set_last_open_dir(Path(name).parent)
             self.open_document_request(Path(name))
 
     def _zoom(self, direction: int) -> None:

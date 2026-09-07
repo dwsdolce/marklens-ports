@@ -4,12 +4,14 @@
 #include "links.h"
 #include "titles.h"
 #include "renderer.h"
+#include "settings.h"
 
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryDir>
 #include <QTest>
 
 #ifndef MARKLENS_SHARED_DIR
@@ -38,6 +40,8 @@ private slots:
     void linkCases();
 
     void titleCases();
+
+    void settingsCases();
 };
 
 void TestCore::renderCases_data() {
@@ -138,6 +142,65 @@ void TestCore::titleCases() {
 #else
     QCOMPARE(titles::kDocumentOnly, false);
 #endif
+}
+
+// The settings file is a contract between the three ports, not an
+// implementation detail of this one: one spelling for paths, case-insensitive
+// de-duplication on Windows, a cap of ten, and keys another port owns left
+// alone. MARKLENS_SETTINGS keeps the real file out of it - without the override
+// this test would eat the recent list of whichever port ran last.
+void TestCore::settingsCases() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    qputenv("MARKLENS_SETTINGS", (dir.path() + "/settings.json").toUtf8());
+
+    QVERIFY(settings::recentFiles().isEmpty());
+    QVERIFY(settings::lastOpenDir().isEmpty());
+    QCOMPARE(settings::toolBarStyle(7), 7);
+
+    // Newest first, and the same document twice is one entry.
+    settings::addRecent("/tmp/a.md");
+    settings::addRecent("/tmp/b.md");
+    settings::addRecent("/tmp/a.md");
+    const QStringList expected{"/tmp/a.md", "/tmp/b.md"};
+    QCOMPARE(settings::recentFiles(), expected);
+
+    // Stored with forward slashes whatever the caller hands over.
+    settings::addRecent(QDir::toNativeSeparators("/tmp/c.md"));
+    // 0x5C rather than a literal: the assertion is that no backslash
+    // survives, and writing one here is how it would sneak back in.
+    QVERIFY(!settings::recentFiles().first().contains(QChar(0x5C)));
+
+    // Capped.
+    for (int i = 0; i < 15; ++i)
+        settings::addRecent(QStringLiteral("/tmp/n%1.md").arg(i));
+    QCOMPARE(settings::recentFiles().size(), 10);
+    QCOMPARE(settings::recentFiles().first(), QStringLiteral("/tmp/n14.md"));
+
+    settings::setLastOpenDir("/tmp/docs");
+    QCOMPARE(settings::lastOpenDir(), QStringLiteral("/tmp/docs"));
+    settings::setToolBarStyle(2);
+    QCOMPARE(settings::toolBarStyle(7), 2);
+
+    // A key this port does not own survives a write from this port.
+    {
+        QFile f(settings::filePath());
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QJsonObject data = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
+        data.insert("somethingElse", 42);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(data).toJson());
+        f.close();
+    }
+    settings::addRecent("/tmp/after.md");
+    QFile f(settings::filePath());
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QJsonObject data = QJsonDocument::fromJson(f.readAll()).object();
+    QCOMPARE(data.value("somethingElse").toInt(), 42);
+    QCOMPARE(data.value("toolBarStyle").toInt(), 2);
+
+    qunsetenv("MARKLENS_SETTINGS");
 }
 
 QTEST_MAIN(TestCore)

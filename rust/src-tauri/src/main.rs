@@ -1,10 +1,10 @@
 // Prevent a console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use marklens::{links, renderer, titles};
+use marklens::{links, renderer, settings, titles};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::menu::{
     AboutMetadataBuilder, CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder,
@@ -51,7 +51,7 @@ fn render_document(app: AppHandle, state: State<AppState>, path: String) -> Resu
         .unwrap_or_default();
 
     *state.current.lock().unwrap() = Some(path.clone());
-    add_recent(&app, &path);
+    settings::add_recent(&path);
     refresh_recent(&app);
 
     // The frontend sets document.title, which a Tauri webview does not
@@ -186,7 +186,7 @@ fn reveal_label() -> &'static str {
 fn fill_recent(app: &AppHandle, menu: &Submenu<Wry>) -> tauri::Result<()> {
     while menu.remove_at(0)?.is_some() {}
 
-    let recent = load_recent(app);
+    let recent = settings::recent_files();
     if recent.is_empty() {
         menu.append(
             &MenuItemBuilder::with_id("recent_none", "No Recent Documents")
@@ -355,7 +355,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
             }
         }
         "recent_clear" => {
-            clear_recent(app);
+            settings::clear_recent();
             refresh_recent(app);
         }
         other if other.starts_with("recent:") => {
@@ -373,14 +373,26 @@ fn emit(app: &AppHandle, event: &str) {
 
 fn open_file_dialog(app: &AppHandle) {
     let app2 = app.clone();
-    app.dialog()
+    let mut builder = app
+        .dialog()
         .file()
-        .add_filter("Markdown", &["md", "markdown", "mdown", "mkd", "txt"])
-        .pick_file(move |path| {
-            if let Some(fp) = path {
-                open_document(&app2, fp.to_string());
+        .add_filter("Markdown", &["md", "markdown", "mdown", "mkd", "txt"]);
+    // Without this the native dialog falls back to whatever the platform
+    // remembers for this executable, which is nothing on a first run and
+    // nothing the Qt ports can see. Asking explicitly is what makes all three
+    // start in the same folder.
+    if let Some(dir) = settings::last_open_dir() {
+        builder = builder.set_directory(dir);
+    }
+    builder.pick_file(move |path| {
+        if let Some(fp) = path {
+            let chosen = fp.to_string();
+            if let Some(parent) = Path::new(&chosen).parent() {
+                settings::set_last_open_dir(parent);
             }
-        });
+            open_document(&app2, chosen);
+        }
+    });
 }
 
 /// Resolve a path given on the command line to an absolute one.
@@ -503,35 +515,9 @@ fn zoom(app: &AppHandle, direction: i32) {
 
 // ── recent files (persisted JSON) ────────────────────────────────────────────
 
-fn recent_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("recent.json"))
-}
-
-fn load_recent(app: &AppHandle) -> Vec<String> {
-    recent_path(app)
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-fn add_recent(app: &AppHandle, path: &str) {
-    let mut recent = load_recent(app);
-    recent.retain(|p| p != path);
-    recent.insert(0, path.to_string());
-    recent.truncate(10);
-    if let Some(file) = recent_path(app) {
-        if let Some(dir) = file.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(file, serde_json::to_string(&recent).unwrap_or_default());
-    }
-}
-
-fn clear_recent(app: &AppHandle) {
-    if let Some(file) = recent_path(app) {
-        let _ = std::fs::remove_file(file);
-    }
-}
+// Recent files now live in the settings file all three ports share, so the
+// Open Recent list is one list rather than one per installer. The spelling and
+// de-duplication rules live in settings.rs, where all three can agree on them.
 
 fn filename(path: &str) -> String {
     Path::new(path)
@@ -623,7 +609,7 @@ fn main() {
             let state = handle.state::<AppState>();
             let mut initial = state.initial.lock().unwrap();
             if initial.is_none() {
-                *initial = load_recent(handle)
+                *initial = settings::recent_files()
                     .into_iter()
                     .find(|p| std::path::Path::new(p).exists());
             }
