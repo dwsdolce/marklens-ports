@@ -176,12 +176,27 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::remove_var("MARKLENS_SETTINGS") };
         let path = settings_path().expect("a config directory");
-        assert_eq!(path.file_name().unwrap(), "settings.json");
-        assert_eq!(path.parent().unwrap().file_name().unwrap(), "Marklens");
-        #[cfg(target_os = "windows")]
-        {
-            let root = std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA");
-            assert!(path.starts_with(&root), "{path:?} is not under {root}");
+        let root = if cfg!(target_os = "windows") {
+            PathBuf::from(std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA"))
+        } else if cfg!(target_os = "macos") {
+            PathBuf::from(std::env::var("HOME").expect("HOME")).join("Library/Preferences")
+        } else {
+            std::env::var("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(std::env::var("HOME").expect("HOME")).join(".config")
+                })
+        };
+        let expected = root.join("Marklens").join("settings.json");
+        // Windows disagrees with itself about case between an environment
+        // variable and a known-folder lookup; elsewhere the comparison is exact.
+        if cfg!(target_os = "windows") {
+            assert_eq!(
+                path.to_string_lossy().to_lowercase(),
+                expected.to_string_lossy().to_lowercase()
+            );
+        } else {
+            assert_eq!(path, expected);
         }
     }
 

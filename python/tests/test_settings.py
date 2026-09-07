@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -97,11 +98,17 @@ def test_default_path_is_the_one_every_port_derives(monkeypatch):
     while Rust's dirs::preference_dir() is AppData/Roaming, so the Qt ports
     derive Roaming by hand there; this pins that down."""
     monkeypatch.delenv("MARKLENS_SETTINGS", raising=False)
-    path = settings.settings_path()
-    assert path.name == "settings.json"
-    assert path.parent.name == "Marklens"
-    if os.name == "nt":
-        assert str(path).lower().startswith(os.environ["LOCALAPPDATA"].lower())
+    if sys.platform == "win32":
+        root = Path(os.environ["LOCALAPPDATA"])
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Preferences"
+    else:
+        root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    expected = root / "Marklens" / "settings.json"
+    # normcase because Windows disagrees with itself about separators and case
+    # between an environment variable and QStandardPaths; elsewhere it is the
+    # identity and the comparison is exact.
+    assert os.path.normcase(str(settings.settings_path())) == os.path.normcase(str(expected))
 
 
 def test_reads_a_file_written_by_the_rust_port(_isolated_settings):

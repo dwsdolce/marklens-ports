@@ -150,6 +150,33 @@ void TestCore::titleCases() {
 // alone. MARKLENS_SETTINGS keeps the real file out of it - without the override
 // this test would eat the recent list of whichever port ran last.
 void TestCore::settingsCases() {
+    // Before the override: the derived path is the assertion that all three
+    // ports open the same file. It fails silently otherwise - two files, two
+    // recent lists, no error - which is exactly what a wrong guess about
+    // AppData/Roaming produced while this was being written.
+    {
+        qunsetenv("MARKLENS_SETTINGS");
+        QString root;
+#if defined(Q_OS_WIN)
+        root = qEnvironmentVariable("LOCALAPPDATA");
+#elif defined(Q_OS_MACOS)
+        root = QDir::homePath() + "/Library/Preferences";
+#else
+        root = qEnvironmentVariable("XDG_CONFIG_HOME");
+        if (root.isEmpty())
+            root = QDir::homePath() + "/.config";
+#endif
+        const QString expected = QDir::fromNativeSeparators(root) + "/Marklens/settings.json";
+        const QString actual = QDir::fromNativeSeparators(settings::filePath());
+#if defined(Q_OS_WIN)
+        // Windows disagrees with itself about case between an environment
+        // variable and QStandardPaths; elsewhere the comparison is exact.
+        QCOMPARE(actual.toLower(), expected.toLower());
+#else
+        QCOMPARE(actual, expected);
+#endif
+    }
+
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     qputenv("MARKLENS_SETTINGS", (dir.path() + "/settings.json").toUtf8());
