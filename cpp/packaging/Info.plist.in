@@ -6,7 +6,8 @@
   CMake's built-in template has no place for CFBundleDocumentTypes, which is
   what makes the app appear under "Open With" for Markdown files and makes a
   drop onto the Dock icon arrive as a command-line argument. Everything else
-  matches what CMake would have generated; the ${MACOSX_BUNDLE_*} placeholders
+  matches what CMake would have generated; the MACOSX_BUNDLE_ placeholders
+  below (written with a dollar and braces, as in the entries that follow)
   are filled from the target properties set in CMakeLists.txt.
 -->
 <plist version="1.0">
