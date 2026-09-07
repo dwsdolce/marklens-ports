@@ -323,6 +323,53 @@ void MainWindow::showAbout() {
                  QStringLiteral("https://github.com/donald-jackson/marklens")));
 }
 
+// A document opened as a document gets an instance of its own, because there is
+// no relationship between it and whatever is already open: replacing in place
+// would put a file you never navigated to on the Back stack, and Back means
+// "the page I came from".
+//
+// One document, one process - see shared/spec/SPEC.md.
+void MainWindow::openDocumentRequest(const QString &path) {
+    // Asking for the document already on screen means "show me that", not
+    // "give me a second copy of it" - and Open Recent lists the current
+    // document first, so this is the easiest of all of these to hit.
+    if (QFileInfo(path).absoluteFilePath() == m_current) {
+        show();
+        raise();
+        activateWindow();
+        return;
+    }
+    // An empty window has nothing to displace, and leaving one behind while a
+    // second instance starts is what no document application does.
+    if (hasDocument() && startNewInstance(path))
+        return;
+    openPath(path);
+    show();
+    raise();
+    activateWindow();
+}
+
+// False when there is nothing to start, which is a development build run from
+// the build tree. Opening in place is then the only thing left.
+bool MainWindow::startNewInstance(const QString &path) {
+#if defined(Q_OS_MACOS)
+    // -n is what overrides the single-instance rule; without it the open is
+    // handed straight back to this process and nothing happens. Running the
+    // executable inside the bundle directly would start a process the window
+    // server does not treat as a second copy of the application.
+    QDir bundle(QCoreApplication::applicationDirPath()); // <app>.app/Contents/MacOS
+    if (!bundle.cdUp() || !bundle.cdUp() || !bundle.absolutePath().endsWith(".app"))
+        return false;
+    return QProcess::startDetached("/usr/bin/open",
+                                   {"-n", "-a", bundle.absolutePath(), path});
+#else
+    // Windows and Linux have no single-instance rule to work around: their file
+    // managers already start another process, and this is the same thing done
+    // from inside the application.
+    return QProcess::startDetached(QCoreApplication::applicationFilePath(), {path});
+#endif
+}
+
 void MainWindow::openPath(const QString &path, bool recordHistory, const QString &fragment) {
     const QString resolved = QFileInfo(path).absoluteFilePath();
     m_pendingFragment = fragment;
@@ -423,7 +470,7 @@ void MainWindow::rebuildRecentMenu() {
     for (const QString &path : recent) {
         QAction *a = m_recentMenu->addAction(QFileInfo(path).fileName());
         a->setToolTip(path);
-        connect(a, &QAction::triggered, this, [this, path] { openPath(path); });
+        connect(a, &QAction::triggered, this, [this, path] { openDocumentRequest(path); });
     }
     m_recentMenu->addSeparator();
     m_recentMenu->addAction("Clear Menu", this, &MainWindow::clearRecent);
@@ -516,7 +563,7 @@ void MainWindow::openDialog() {
         this, "Open Markdown", QString(),
         "Markdown (*.md *.markdown *.mdown *.mkd);;All files (*)");
     if (!name.isEmpty())
-        openPath(name);
+        openDocumentRequest(name);
 }
 
 void MainWindow::zoom(int direction) {

@@ -359,7 +359,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
             refresh_recent(app);
         }
         other if other.starts_with("recent:") => {
-            let _ = app.emit("open-file", other.trim_start_matches("recent:").to_string());
+            open_document(app, other.trim_start_matches("recent:").to_string());
         }
         _ => {}
     }
@@ -378,7 +378,7 @@ fn open_file_dialog(app: &AppHandle) {
         .add_filter("Markdown", &["md", "markdown", "mdown", "mkd", "txt"])
         .pick_file(move |path| {
             if let Some(fp) = path {
-                let _ = app2.emit("open-file", fp.to_string());
+                open_document(&app2, fp.to_string());
             }
         });
 }
@@ -398,31 +398,73 @@ fn absolute(path: &str) -> String {
     text.strip_prefix(r"\\?\").map(str::to_owned).unwrap_or(text)
 }
 
-/// Ask macOS for another copy of this application, showing `path`.
+/// Open a document as a document, rather than navigating to it.
 ///
-/// False when there is no application bundle to start, which is a development
-/// build run straight from the target directory. Opening in place is then the
-/// only thing left, and is what happened before this existed.
-#[cfg(target_os = "macos")]
+/// Every route that opens one goes through here: the file dialog, Open Recent,
+/// and the document the system hands over on macOS. Following a link does not -
+/// that replaces in place, which is what Back is for.
+///
+/// Such a document gets an instance of its own, because there is no
+/// relationship between it and whatever is already open: replacing in place
+/// would put a file you never navigated to on the Back stack. One document, one
+/// process - see shared/spec/SPEC.md.
+fn open_document(app: &AppHandle, path: String) {
+    let current = app.state::<AppState>().current.lock().unwrap().clone();
+    // Asking for the document already on screen means "show me that", not "give
+    // me a second copy of it" - and Open Recent lists the current document
+    // first, so this is the easiest of these to hit.
+    if current.as_deref() == Some(path.as_str()) {
+        return;
+    }
+    // An empty window has nothing to displace, and leaving one behind while a
+    // second instance starts is what no document application does.
+    if current.is_some() && start_new_instance(&path) {
+        return;
+    }
+    // Both routes, because which one lands depends on how far the frontend has
+    // got. It registers its open-file listener before it asks for the initial
+    // document, so an event arriving after the page is up is heard; one that
+    // arrives before it loads is not, and is collected from `initial` instead.
+    *app.state::<AppState>().initial.lock().unwrap() = Some(path.clone());
+    let _ = app.emit("open-file", path);
+}
+
+/// Start another copy of this application, showing `path`.
+///
+/// False when there is nothing to start, which on macOS is a development build
+/// with no application bundle around it. Opening in place is then all that is
+/// left.
 fn start_new_instance(path: &str) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
     };
-    // <app>.app/Contents/MacOS/<exe>
-    let Some(bundle) = exe.parent().and_then(Path::parent).and_then(Path::parent) else {
-        return false;
-    };
-    if bundle.extension().and_then(|e| e.to_str()) != Some("app") {
-        return false;
+    #[cfg(target_os = "macos")]
+    {
+        // <app>.app/Contents/MacOS/<exe>
+        let Some(bundle) = exe.parent().and_then(Path::parent).and_then(Path::parent) else {
+            return false;
+        };
+        if bundle.extension().and_then(|e| e.to_str()) != Some("app") {
+            return false;
+        }
+        // -n is what overrides the single-instance rule; without it the open is
+        // handed straight back to this process and nothing happens. Running the
+        // executable inside the bundle directly would start a process the
+        // window server does not treat as a second copy of the application.
+        std::process::Command::new("/usr/bin/open")
+            .args(["-n", "-a"])
+            .arg(bundle)
+            .arg(path)
+            .spawn()
+            .is_ok()
     }
-    // -n is what overrides the single-instance rule; without it the open is
-    // handed straight back to this process and nothing happens.
-    std::process::Command::new("/usr/bin/open")
-        .args(["-n", "-a"])
-        .arg(bundle)
-        .arg(path)
-        .spawn()
-        .is_ok()
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows and Linux have no single-instance rule to work around: their
+        // file managers already start another process, and this is the same
+        // thing done from inside the application.
+        std::process::Command::new(exe).arg(path).spawn().is_ok()
+    }
 }
 
 /// Open one of the folders from the document's path menu in the file manager.
@@ -616,33 +658,12 @@ fn main() {
             };
             let path = path.to_string_lossy().into_owned();
 
-            // A document the system hands over gets an instance of its own,
-            // because there is no relationship between it and whatever is
-            // already open: replacing the document in place would put an
-            // unrelated file on the Back stack, and Back means "the page I came
-            // from". Following a link is the opposite case and still replaces.
-            //
-            // Windows and Linux never reach here at all: having no
-            // single-instance rule, their file managers simply run the
-            // executable again, which is the behaviour this reproduces.
-            //
-            // `current` is empty only before the frontend has rendered
-            // anything, which is the launch case - the document that started
-            // the application belongs in this instance, not a second one.
-            let showing = app.state::<AppState>().current.lock().unwrap().is_some();
-            if showing && start_new_instance(&path) {
-                return;
-            }
-
-            // Both routes, because which one lands depends on how far the
-            // frontend has got. It registers its open-file listener before it
-            // asks for the initial document, so an event that arrives after the
-            // page is up is heard; one that arrives before it loads is not, and
-            // is collected from `initial` instead. Setting both also displaces
-            // the most-recent document seeded during setup, which would
-            // otherwise be what a Finder-launched window rendered.
-            *app.state::<AppState>().initial.lock().unwrap() = Some(path.clone());
-            let _ = app.emit("open-file", path);
+            // macOS routes every document to the application already running
+            // and delivers it as an Apple Event. What to do with it is the same
+            // question the file dialog and Open Recent ask, and is answered in
+            // one place. `current` being empty is the launch case: the document
+            // that started the application belongs in this instance.
+            open_document(app, path);
             }
         });
 }

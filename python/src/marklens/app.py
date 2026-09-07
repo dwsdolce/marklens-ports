@@ -14,7 +14,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QSettings, QSize, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    QCoreApplication,
+    QFileSystemWatcher,
+    QSettings,
+    QSize,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -614,7 +623,9 @@ class MainWindow(QMainWindow):
         for p in recent:
             act = self._recent_menu.addAction(Path(p).name)
             act.setToolTip(p)
-            act.triggered.connect(lambda _checked=False, path=p: self.open_path(Path(path)))
+            act.triggered.connect(
+                lambda _checked=False, path=p: self.open_document_request(Path(path))
+            )
         self._recent_menu.addSeparator()
         self._recent_menu.addAction("Clear Menu", self._clear_recent)
 
@@ -661,6 +672,61 @@ class MainWindow(QMainWindow):
     # ── loading ──────────────────────────────────────────────────────────────
 
     @Slot(Path, str)
+    def open_document_request(self, path: Path) -> None:
+        """Open a document as a document, rather than navigating to it.
+
+        Every route that opens one goes through here: the file dialog, Open
+        Recent, and the document the system hands over on macOS. Following a
+        link does not - that replaces in place, which is what Back is for.
+
+        Such a document gets an instance of its own, because there is no
+        relationship between it and whatever is already open: replacing in
+        place would put a file you never navigated to on the Back stack. One
+        document, one process - see shared/spec/SPEC.md.
+        """
+        path = path.resolve()
+        # Asking for the document already on screen means "show me that", not
+        # "give me a second copy of it" - and Open Recent lists the current
+        # document first, so this is the easiest of these to hit.
+        if path != self._current:
+            # An empty window has nothing to displace, and leaving one behind
+            # while a second instance starts is what no document application
+            # does.
+            if self._current is not None and self._start_new_instance(path):
+                return
+            self.open_path(path)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    @staticmethod
+    def _start_new_instance(path: Path) -> bool:
+        """False when there is nothing to start.
+
+        A development run is the interpreter with this package on its path, not
+        an application that can be handed a document, so opening in place is
+        then the only thing left.
+        """
+        if not getattr(sys, "frozen", False):
+            return False
+        if sys.platform == "darwin":
+            # -n is what overrides the single-instance rule; without it the open
+            # is handed straight back to this process and nothing happens.
+            bundle = Path(QCoreApplication.applicationDirPath()).parent.parent
+            if bundle.suffix != ".app":
+                return False
+            command = ["/usr/bin/open", "-n", "-a", str(bundle), str(path)]
+        else:
+            # Windows and Linux have no single-instance rule to work around:
+            # their file managers already start another process, and this is the
+            # same thing done from inside the application.
+            command = [QCoreApplication.applicationFilePath(), str(path)]
+        try:
+            subprocess.Popen(command)
+        except OSError:
+            return False
+        return True
+
     def open_path(self, path: Path, fragment: str = "", *, record_history: bool = True) -> None:
         path = path.resolve()
         # Held until loadFinished: the document is rendered with setHtml, so
@@ -793,7 +859,7 @@ class MainWindow(QMainWindow):
             self, "Open Markdown", "", "Markdown (*.md *.markdown *.mdown *.mkd);;All files (*)"
         )
         if name:
-            self.open_path(Path(name))
+            self.open_document_request(Path(name))
 
     def _zoom(self, direction: int) -> None:
         self._view.setZoomFactor(self._view.zoomFactor() * (1.1 if direction > 0 else 1 / 1.1))

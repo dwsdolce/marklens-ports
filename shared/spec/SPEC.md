@@ -96,21 +96,31 @@ briefly and stands down if a document turns up in the meantime.
 
 ## Opening a second document
 
-One document, one process. Asking the system to open a `.md` while a document is
-already showing starts another copy of the application rather than replacing
-what is on screen: the two documents are unrelated, and replacing in place would
-put a file you never navigated to on the Back stack, where Back means "the page
-I came from".
+One document, one process. Opening a `.md` while a document is already showing
+starts another copy of the application rather than replacing what is on screen:
+the two are unrelated, and replacing in place would put a file you never
+navigated to on the Back stack, where Back means "the page I came from".
 
-Following a link is the opposite case and does replace in place - that is what
-Back exists for.
+That applies to every route that opens a document *as a document* - the file
+dialog, Open Recent, and the file the system hands over - and not to following a
+link, which does replace in place, because that is what Back exists for. Routing
+them all through one decision is what stops the same intent behaving differently
+depending on where it was expressed.
 
-Windows and Linux get this for nothing. They have no single-instance rule, so a
-file manager simply runs the executable again. macOS routes every document to
-the copy already running and delivers it as an Apple Event, so there the
-application has to ask for a second instance itself, with `open -n -a`. An empty
-window is the one exception on any platform: it has nothing to displace, so the
-document opens into it.
+Two exceptions, both the same idea. An empty window has nothing to displace, so
+the document opens into it. And asking for the document already on screen means
+"show me that", not "give me a second copy" - which Open Recent makes easy to
+hit, since it lists the current document first.
+
+The platforms differ only in how an instance is asked for. macOS routes every
+document to the copy already running and delivers it as an Apple Event, so there
+the application starts one with `open -n -a`; running the executable inside the
+bundle directly would give a process the window server does not treat as a
+second copy. Windows and Linux have no single-instance rule - a file manager
+simply runs the executable again - so the application does the same, running
+itself with the path. Neither can start anything from a development build, which
+is not an application a document can be handed; opening in place is then all
+that is left.
 
 The cost is one webview engine per document - a couple of hundred megabytes for
 the Qt ports. That is the price of the model Windows and Linux already had, and

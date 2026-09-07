@@ -34,6 +34,11 @@ public:
 
     bool hasDocument() const { return !m_current.isEmpty(); }
 
+    // Every route that opens a document goes through here: the file dialog,
+    // Open Recent, and the document the system hands over on macOS. Following
+    // a link does not - that replaces in place, which is what Back is for.
+    void openDocumentRequest(const QString &path);
+
 
     // Test seams: let the nav test click links and observe loads on the real
     // app wiring (the queued openDocument connection lives in the ctor), and
@@ -65,6 +70,7 @@ private:
     void hideFind();
     void findText(bool backward);
     void setStale(bool stale);
+    static bool startNewInstance(const QString &path);
     void buildPathMenu();
     void updateDocButton();
     void showToolBarMenu(const QPoint &pos);

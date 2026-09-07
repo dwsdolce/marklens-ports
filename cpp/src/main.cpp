@@ -4,9 +4,7 @@
 #include <QApplication>
 #include <QEvent>
 #include <QFileOpenEvent>
-#include <QDir>
 #include <QIcon>
-#include <QProcess>
 #include <QString>
 #include <QTimer>
 #include <QtGlobal>
@@ -60,44 +58,10 @@ protected:
     }
 
 private:
-    // A document the system hands over gets an instance of its own, because
-    // there is no relationship between it and whatever is already open:
-    // replacing the document in place would put an unrelated file on the Back
-    // stack, and Back means "the page I came from". Following a link is the
-    // opposite case and still replaces in place.
-    //
-    // Windows and Linux reach this the other way round and never get here at
-    // all: having no single-instance rule, their file managers simply run the
-    // executable again. macOS routes every document to the application already
-    // running, so a second instance has to be asked for.
-    void openDocument(const QString &path) {
-        // An empty window has nothing to displace, and leaving one behind while
-        // a second instance starts is what no document application does.
-        if (!m_window->hasDocument()) {
-            m_window->openPath(path);
-            m_window->show();
-            m_window->raise();
-            m_window->activateWindow();
-            return;
-        }
-        if (!startNewInstance(path))
-            m_window->openPath(path); // no bundle to start: see below
-    }
-
-    // False when there is no application bundle to start, which is a
-    // development build run straight from the build tree. Opening in place is
-    // then the only thing left, and is what happened before this existed.
-    static bool startNewInstance(const QString &path) {
-        QDir bundle(QCoreApplication::applicationDirPath()); // <app>.app/Contents/MacOS
-        if (!bundle.cdUp() || !bundle.cdUp())
-            return false;
-        if (!bundle.absolutePath().endsWith(".app"))
-            return false;
-        // -n is what overrides the single-instance rule; without it the open is
-        // handed straight back to this process and nothing happens.
-        return QProcess::startDetached(
-            "/usr/bin/open", {"-n", "-a", bundle.absolutePath(), path});
-    }
+    // macOS routes every document to the application already running and
+    // delivers it as an Apple Event. The rule for what to do with it is the
+    // same one the file dialog and Open Recent use, and lives with the window.
+    void openDocument(const QString &path) { m_window->openDocumentRequest(path); }
 
     MainWindow *m_window = nullptr;
     QString m_pending;
