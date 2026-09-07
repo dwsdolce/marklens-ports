@@ -25,10 +25,15 @@ ENV = {
 
 
 @pytest.mark.parametrize("script", ["smoke_gui.py", "nav_smoke.py", "back_smoke.py"])
-def test_gui_script(script: str) -> None:
+def test_gui_script(script: str, tmp_path) -> None:
+    # These drive the real MainWindow, which records every document it opens in
+    # the recent-files list. Without an override they write to the developer's
+    # own settings file - and since the app reopens the most recent document at
+    # startup, a temp-directory fixture is what greets them next launch.
+    env = {**ENV, "MARKLENS_SETTINGS": str(tmp_path / "settings.json")}
     result = subprocess.run(
         [sys.executable, str(TESTS_DIR / script)],
-        env=ENV,
+        env=env,
         capture_output=True,
         text=True,
         timeout=60,

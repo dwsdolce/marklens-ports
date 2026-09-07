@@ -346,10 +346,21 @@ set_tests_properties(smoke navigation fragment back PROPERTIES
 # Windows for reasons that looked nothing like a missing DLL. packaging/run_win
 # solves the same problem the same way, and derives the directory the same way:
 # Qt6_DIR is <kit>/lib/cmake/Qt6, so bin/ is three levels up.
+# The tests drive the real MainWindow, which records every document it opens in
+# the recent-files list. Point them at a settings file inside the build tree, or
+# they write to the developer's own - and since the app reopens the most recent
+# document at startup, a temp-directory fixture is what greets them next launch.
+# APPEND, because set_tests_properties REPLACES a property rather than adding
+# to it: the Windows PATH entry below sets ENVIRONMENT_MODIFICATION too, and
+# whichever ran second used to silently discard the other.
+set_property(TEST core smoke navigation fragment back APPEND PROPERTY
+    ENVIRONMENT_MODIFICATION
+        "MARKLENS_SETTINGS=set:${CMAKE_CURRENT_BINARY_DIR}/test-settings.json")
+
 if(WIN32)
     get_filename_component(_qt_kit "${Qt6_DIR}/../../.." ABSOLUTE)
     if(EXISTS "${_qt_kit}/bin")
-        set_tests_properties(core smoke navigation fragment back PROPERTIES
+        set_property(TEST core smoke navigation fragment back APPEND PROPERTY
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qt_kit}/bin")
     endif()
 endif()

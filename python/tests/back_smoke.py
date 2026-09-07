@@ -29,7 +29,14 @@ DOC = (
 
 
 def main() -> int:
-    folder = Path(tempfile.mkdtemp())
+    # A context manager, not mkdtemp: a fixture left on disk is a document the
+    # app can still find in a recent list and reopen, which is exactly how a
+    # test document ended up greeting someone at startup.
+    with tempfile.TemporaryDirectory() as tmp:
+        return _run(Path(tmp))
+
+
+def _run(folder: Path) -> int:
     doc = folder / "doc.md"
     doc.write_text(DOC, encoding="utf-8")
 
