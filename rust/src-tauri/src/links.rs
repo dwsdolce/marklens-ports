@@ -13,9 +13,6 @@ pub fn external_url(href: &str) -> Option<String> {
     }
 }
 
-/// Resolve a relative `href` against the folder holding `doc_path`. `None` when
-/// there's nothing to resolve (empty href, or a bare `#fragment`). Fragment is
-/// dropped.
 /// The `#fragment` of an href, percent-decoded, or "" when there is none.
 /// `document_relative_path` deliberately drops it - the shared link contract
 /// pins that - so a caller that must land on a heading asks for it here.
@@ -28,6 +25,12 @@ pub fn fragment_of(href: &str) -> String {
     }
 }
 
+/// Resolve a relative `href` against the folder holding `doc_path`. `None` when
+/// there's nothing to resolve (empty href, or a bare `#fragment`). Fragment is
+/// dropped.
+///
+/// Used for image sources as well as links: an `<img src>` is a URL reference
+/// like any other, and needs the same decoding before it names a file.
 pub fn document_relative_path(href: &str, doc_path: &str) -> Option<String> {
     // Keep an empty left side: "#frag" → "" before the fragment.
     let path_part = href.split('#').next().unwrap_or("");

@@ -11,6 +11,13 @@ plus an [external link](https://example.com).
 
 ![icon](design/icon.svg)
 
+A filename with spaces, which a URL spells `%20` - once in Markdown, once as raw
+HTML, the form an `<img>` with a width usually takes:
+
+![icon, spaced filename](design/icon%20with%20spaces.svg)
+
+<img src="design/icon%20with%20spaces.svg" alt="icon, spaced filename, raw HTML" width="64">
+
 ## Table
 
 | Feature   | Works |

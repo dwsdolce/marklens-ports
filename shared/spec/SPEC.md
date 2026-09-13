@@ -33,6 +33,20 @@ resolves beside the file. What decodes it is the webview, not the port — which
 is why the supported formats are a spec matter at all. The three ports embed
 three different engines, and each engine carries its own decoders.
 
+A source is a URL, not a filename, so it is resolved exactly as a link is -
+percent-decoded, joined to the document's folder, `..` collapsed - and that
+applies equally to Markdown images and to raw `<img>` tags. The decoding matters
+more for images than for links, because exported screenshots put spaces in
+their filenames: `iPad%20Landscape.png` names `iPad Landscape.png`, and a `%`
+that does not begin an escape, as in `100%.png`, is a literal character.
+
+The Qt ports get this from the webview, which resolves `src` against the base
+URL and decodes on the way. The Rust port cannot load `file://` from its webview
+and rewrites image sources to the asset protocol itself, so it resolves them
+with the same function it uses for links - the one `link_cases.json` tests -
+rather than a second implementation of its own. It once had a second one, which
+skipped the decoding.
+
 Every port, on every platform, renders:
 
 `PNG`, `JPEG`, `GIF`, `WebP`, `BMP`, `ICO`, `SVG`
@@ -310,13 +324,21 @@ Two layers, and the ports are not level with each other on the second.
 do: `test_core` (C++), `test_renderer`/`test_links` (Python), `fixtures.rs`
 (Rust).
 
+The link fixtures carry the cases images meet as well as links - an encoded
+space in a directory as well as a filename, a UTF-8 escape, and a literal `%` -
+since the Rust port resolves images with the same function. The literal `%`
+found a bug on its first run: the C++ port decoded `100%.md` to a NUL byte,
+because `QUrl::fromPercentEncoding` reads the two characters after every `%`
+as hex whether they are hex or not.
+
 **Driving the real application** is the layer that catches what fixtures cannot:
 that a document *renders*, rather than merely that the window opened. The worst
 bugs found so far were both of that kind - a WebEngine helper that could not
 start, so nothing ever rendered while the app looked healthy, and relative
 images silently resolving against the wrong folder. C++ and Python cover it with
-`smoke_gui` (loads the sample and asserts, via JavaScript, that the image
-loaded, mermaid drew and code highlighted) and `nav_smoke` (clicks a relative
+`smoke_gui` (loads the sample and asserts, via JavaScript, that every image
+loaded - including two whose filename has a space, one in Markdown and one as
+raw HTML - that mermaid drew, and that code highlighted) and `nav_smoke` (clicks a relative
 link and asserts the viewer navigated).
 
 The Rust port has no equivalent, and the obstacle is structural rather than a

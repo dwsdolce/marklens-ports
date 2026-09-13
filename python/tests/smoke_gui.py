@@ -25,6 +25,13 @@ CHECK_JS = """
         h1: (document.querySelector('h1') || {}).textContent || null,
         imgSrc: img ? img.getAttribute('src') : null,
         imgComplete: img ? (img.complete && img.naturalWidth > 0) : null,
+        // Every image, not just the first: the first one's filename has nothing
+        // to decode, so checking it alone missed a %20 that resolved to nothing.
+        imgCount: document.querySelectorAll('img').length,
+        brokenImages: Array.prototype.filter.call(
+            document.querySelectorAll('img'),
+            function (i) { return !(i.complete && i.naturalWidth > 0); }
+        ).map(function (i) { return i.getAttribute('src'); }),
         hasMermaidDiv: !!mermaid,
         mermaidRendered: mermaid ? mermaid.querySelector('svg') !== null : false,
         hasTable: !!document.querySelector('table'),
@@ -61,6 +68,8 @@ def main() -> int:
         result.get("h1") == "Marklens sample"
         and result.get("imgSrc") == "design/icon.svg"
         and result.get("imgComplete") is True
+        and result.get("imgCount") == 3
+        and result.get("brokenImages") == []
         and result.get("hasMermaidDiv") is True
         and result.get("hasTable") is True
         and result.get("codeHighlighted") is True

@@ -206,7 +206,7 @@ docBtn.addEventListener("click", (e) => {
 // drive the webview rather than the app, so the three ports would neither match
 // each other nor behave correctly. See SPEC.md.
 
-content.addEventListener("contextmenu", (e) => {
+content.addEventListener("contextmenu", async (e) => {
   e.preventDefault();
   const link = e.target.closest?.("a");
   const selection = String(window.getSelection() ?? "");
@@ -222,7 +222,13 @@ content.addEventListener("contextmenu", (e) => {
     // path is what is worth having.
     const href = link.getAttribute("href") || "";
     const external = /^[a-z][a-z0-9+.-]*:/i.test(href);
-    const text = external ? href : joinPath(currentFolder, href);
+    // Resolved here rather than in the click, because a clipboard write has to
+    // happen inside the user gesture that allowed it, and a round trip to the
+    // backend in between can outlast that.
+    const resolved = external
+      ? null
+      : (await invoke("resolve_paths", { hrefs: [href], doc: currentDoc }))[0];
+    const text = external ? href : (resolved ?? href);
     items.push({
       label: "Copy Link Address",
       onClick: () => navigator.clipboard.writeText(text).catch(() => {}),
@@ -270,7 +276,7 @@ async function show(path, { recordHistory = true, fragment = "", scroll = null }
   backBtn.disabled = history.length === 0;
 
   content.innerHTML = result.body;
-  resolveImages();
+  resolveImages().catch(() => {});
   highlight();
   runMermaid();
 
@@ -291,12 +297,27 @@ async function show(path, { recordHistory = true, fragment = "", scroll = null }
   invoke("watch_document", { path }).catch(() => {});
 }
 
-function resolveImages() {
-  for (const img of content.querySelectorAll("img")) {
+// Relative image sources become asset-protocol URLs, since the webview runs from
+// tauri://localhost and cannot load file:// directly. Resolving them - decoding,
+// joining to the document's folder, collapsing ".." - is the backend's job, done
+// by the same function that resolves a clicked link.
+async function resolveImages() {
+  const images = [...content.querySelectorAll("img")].filter((img) => {
     const src = img.getAttribute("src") || "";
-    if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) continue;
-    img.src = convertFileSrc(joinPath(currentFolder, src));
-  }
+    return src && !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith("//");
+  });
+  if (images.length === 0) return;
+  const doc = currentDoc;
+  const paths = await invoke("resolve_paths", {
+    hrefs: images.map((img) => img.getAttribute("src")),
+    doc,
+  });
+  // A late answer for a document already navigated away from is dropped. Its
+  // images are detached by then, so this is tidiness rather than correctness.
+  if (doc !== currentDoc) return;
+  images.forEach((img, i) => {
+    if (paths[i]) img.src = convertFileSrc(paths[i]);
+  });
 }
 function highlight() {
   if (window.hljs) content.querySelectorAll("pre code").forEach((el) => window.hljs.highlightElement(el));
@@ -523,9 +544,6 @@ listen("document-stale", (e) => {
 
 function filename(p) {
   return p.split("/").pop();
-}
-function joinPath(folder, rel) {
-  return folder.replace(/\/+$/, "") + "/" + rel;
 }
 
 invoke("initial_document").then((path) => {

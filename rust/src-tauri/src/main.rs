@@ -500,6 +500,24 @@ fn start_new_instance(path: &str) -> bool {
     }
 }
 
+/// Resolve document-relative references - image sources, link targets - against
+/// the open document, exactly as a clicked link is resolved.
+///
+/// The frontend used to join these onto the folder itself, which skipped the
+/// percent-decoding links.rs does, so an image named "iPad Landscape.png" and
+/// referenced as "iPad%20Landscape.png" looked for a file with a literal %20 in
+/// its name. Routing them through `document_relative_path` means there is one
+/// implementation, and it is the one the shared link fixtures already test.
+///
+/// Batched, so a document costs one round trip however many images it has.
+#[tauri::command]
+fn resolve_paths(hrefs: Vec<String>, doc: String) -> Vec<Option<String>> {
+    hrefs
+        .iter()
+        .map(|href| links::document_relative_path(href, &doc))
+        .collect()
+}
+
 /// Open one of the folders from the document's path menu in the file manager.
 #[tauri::command]
 fn open_folder(app: AppHandle, path: String) {
@@ -610,6 +628,7 @@ fn main() {
             zoom_view,
             reveal_document,
             open_folder,
+            resolve_paths,
             print_document,
             help_html
         ])

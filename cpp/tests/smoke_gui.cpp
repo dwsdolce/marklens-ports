@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -29,6 +30,11 @@ const char *kCheckJs = R"JS(
         h1: (document.querySelector('h1') || {}).textContent || null,
         imgSrc: img ? img.getAttribute('src') : null,
         imgComplete: img ? (img.complete && img.naturalWidth > 0) : null,
+        imgCount: document.querySelectorAll('img').length,
+        brokenImages: Array.prototype.filter.call(
+            document.querySelectorAll('img'),
+            function (i) { return !(i.complete && i.naturalWidth > 0); }
+        ).map(function (i) { return i.getAttribute('src'); }),
         hasMermaidDiv: !!mermaid,
         mermaidRendered: mermaid ? mermaid.querySelector('svg') !== null : false,
         hasTable: !!document.querySelector('table'),
@@ -63,9 +69,20 @@ int main(int argc, char **argv) {
                 const QJsonObject r = QJsonDocument::fromJson(v.toString().toUtf8()).object();
                 std::printf("RESULT: %s\n",
                             QJsonDocument(r).toJson(QJsonDocument::Compact).constData());
+                // Every image, not just the first: the first one's filename has
+                // nothing to decode, so checking it alone missed a %20 that
+                // resolved to nothing.
+                const bool imagesOk = r.value("imgCount").toInt() == 3 &&
+                                      r.value("brokenImages").toArray().isEmpty();
+                if (!imagesOk)
+                    std::printf("broken images: %s\n",
+                                QJsonDocument(r.value("brokenImages").toArray())
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
                 const bool ok = r.value("h1").toString() == "Marklens sample" &&
                                 r.value("imgSrc").toString() == "design/icon.svg" &&
-                                r.value("imgComplete").toBool() && r.value("hasMermaidDiv").toBool() &&
+                                r.value("imgComplete").toBool() && imagesOk &&
+                                r.value("hasMermaidDiv").toBool() &&
                                 r.value("hasTable").toBool() && r.value("codeHighlighted").toBool();
                 std::printf("SMOKE: %s\n", ok ? "PASS" : "FAIL");
                 exitCode = ok ? 0 : 1;
