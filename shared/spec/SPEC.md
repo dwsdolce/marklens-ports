@@ -250,6 +250,20 @@ The count is the reason the Rust port cannot use the webview's own `window.find`
 - it reports whether something matched, not how many - so that port marks the
 hits in the DOM itself and colours the active one apart from the rest.
 
+**A re-render re-runs the search.** Auto-reload rebuilds the page on every save
+of the file being read, which throws away everything the search was holding: in
+Qt the highlights, in Rust the marked nodes the count is computed from. Left
+alone the bar looks broken rather than empty - the count still shows a number,
+and stepping through nodes that are no longer in the document moves nothing on
+screen. All three ports therefore re-run the current search once the new page
+has loaded, if the bar is open and the field is not empty.
+
+Rust needs one thing more than the Qt ports: because it holds the hit list
+itself, stepping has to notice that the list has gone stale (`isConnected` on
+the first hit) and search again rather than step into detached nodes. The Qt
+ports hold no state - they delegate to `QWebEngineView::findText` - so for them
+re-running on load is the whole fix.
+
 ## Gotchas (learned the hard way — every webview port hits these)
 
 - **Don't re-navigate from inside a navigation callback.** Following a link
@@ -338,11 +352,12 @@ start, so nothing ever rendered while the app looked healthy, and relative
 images silently resolving against the wrong folder. C++ and Python cover it with
 `smoke_gui` (loads the sample and asserts, via JavaScript, that every image
 loaded - including two whose filename has a space, one in Markdown and one as
-raw HTML - that mermaid drew, and that code highlighted) and `nav_smoke` (clicks a relative
-link and asserts the viewer navigated).
+raw HTML - that mermaid drew, and that code highlighted), `nav_smoke` (clicks a
+relative link and asserts the viewer navigated) and `find_smoke` (searches, then
+re-renders, and asserts the match count came back rather than going blank).
 
 The Rust port has no equivalent, and the obstacle is structural rather than a
-missing file. C++ keeps its window code in a library, `marklens_gui`, which both
+missing file. C++ keeps its window code in a library, `marklens_gui`, which the
 GUI tests link against. Rust's `lib.rs` holds only the renderer and the link
 resolver; the window, the menus and the commands all live in the binary, where
 no test can reach them. Closing the gap means moving the application into the

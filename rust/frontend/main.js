@@ -278,7 +278,9 @@ async function show(path, { recordHistory = true, fragment = "", scroll = null }
   content.innerHTML = result.body;
   resolveImages().catch(() => {});
   highlight();
-  runMermaid();
+  // Re-marking waits for mermaid, which replaces the blocks it draws: a hit
+  // inside a diagram's source would be orphaned the moment it rendered.
+  runMermaid().then(refreshSearch, refreshSearch);
 
   // A #fragment that came with a link to ANOTHER document. Same-document
   // anchors are left to the browser (see the click handler); this is the
@@ -323,11 +325,10 @@ function highlight() {
   if (window.hljs) content.querySelectorAll("pre code").forEach((el) => window.hljs.highlightElement(el));
 }
 function runMermaid() {
-  if (window.mermaid) {
-    const dark = document.documentElement.dataset.theme === "dark";
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
-    window.mermaid.run({ querySelector: ".mermaid" });
-  }
+  if (!window.mermaid) return Promise.resolve();
+  const dark = document.documentElement.dataset.theme === "dark";
+  window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
+  return window.mermaid.run({ querySelector: ".mermaid" });
 }
 
 // ── link routing ─────────────────────────────────────────────────────────────
@@ -430,6 +431,17 @@ function showHit(index) {
   findCount.textContent = `${hitIndex + 1} of ${hits.length}`;
 }
 
+// Called after the document is re-rendered, which orphans every mark. Re-runs
+// rather than just resetting: auto-reload re-renders on each save of the file
+// being read, and a search should survive someone editing the document in
+// another window.
+function refreshSearch() {
+  hits = [];
+  hitIndex = -1;
+  findCount.textContent = "";
+  if (!findBar.hidden && findInput.value) runSearch(findInput.value);
+}
+
 // Re-marks from scratch each time. The documents here are one screenful to a
 // few hundred lines, so the simple thing is fast enough and cannot drift out of
 // step with the text the way an incremental index would.
@@ -446,7 +458,11 @@ function findText(backwards) {
     clearHits();
     return;
   }
-  if (!hits.length) {
+  // `isConnected` is the important half. A re-render replaces every node, so
+  // the marks are gone while `hits` still points at them - and stepping through
+  // detached nodes moves the counter and nothing else, which looks exactly like
+  // the bar having stopped responding.
+  if (!hits.length || !hits[0].isConnected) {
     runSearch(q);
     return;
   }

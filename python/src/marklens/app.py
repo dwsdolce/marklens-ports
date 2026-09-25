@@ -189,6 +189,7 @@ class MainWindow(QMainWindow):
         # the Back button's state needs no round trip to the page.
         self._in_page_depth = 0
         self._view.loadFinished.connect(self._scroll_to_pending_fragment)
+        self._view.loadFinished.connect(self._refresh_search)
         self._page = _Page(self._view)
         # Queued, NOT direct: open_document fires from inside the page's
         # acceptNavigationRequest, and open_path calls setHtml. Re-entering
@@ -699,6 +700,20 @@ class MainWindow(QMainWindow):
         self._add_recent(path)
         self._render()
         self._update_back_enabled()
+
+    def _refresh_search(self, ok: bool) -> None:
+        """Re-run the find after a re-render, so the highlights come back.
+
+        A re-render replaces the document and the engine's find state goes with
+        it: the highlights vanish and the count goes stale. Auto-reload does
+        this on every save of the file being read, so an edit in another window
+        would silently drop your search.
+
+        It has to wait for the load - setHtml is asynchronous, and searching
+        before it lands searches the old document.
+        """
+        if ok and self._find_bar.isVisible() and self._find_input.text():
+            self._find_text(False)
 
     def _scroll_to_pending_fragment(self, ok: bool) -> None:
         """Honour a #fragment that arrived with a link to *another* document.

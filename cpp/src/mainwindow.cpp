@@ -101,6 +101,17 @@ MainWindow::MainWindow() {
     // Honour a #fragment that arrived with a link to *another* document.
     // Same-document anchors are handled by the view itself (see page.cpp); this
     // is the cross-file case, which cannot act until the new page is rendered.
+    // A re-render replaces the document, so the engine's find state goes with
+    // it: the highlights vanish and the count goes stale. Auto-reload does this
+    // on every save of the file being read, so an edit in another window would
+    // silently drop your search. Re-running it here puts the highlights back
+    // without being asked. It has to wait for the load - setHtml is
+    // asynchronous, and searching before it lands searches the old document.
+    connect(m_view, &QWebEngineView::loadFinished, this, [this](bool ok) {
+        if (ok && m_findBar->isVisible() && !m_find->text().isEmpty())
+            findText(false);
+    });
+
     connect(m_view, &QWebEngineView::loadFinished, this, [this](bool ok) {
         // Only a SUCCESSFUL load consumes it. Refusing a link navigation makes
         // QtWebEngine emit loadFinished(false), and that arrives after the

@@ -24,7 +24,9 @@ ENV = {
 }
 
 
-@pytest.mark.parametrize("script", ["smoke_gui.py", "nav_smoke.py", "back_smoke.py"])
+@pytest.mark.parametrize(
+    "script", ["smoke_gui.py", "nav_smoke.py", "back_smoke.py", "find_smoke.py"]
+)
 def test_gui_script(script: str, tmp_path) -> None:
     # These drive the real MainWindow, which records every document it opens in
     # the recent-files list. Without an override they write to the developer's

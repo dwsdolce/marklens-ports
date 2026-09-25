@@ -336,7 +336,13 @@ qt_add_executable(back_smoke tests/back_smoke.cpp)
 target_link_libraries(back_smoke PRIVATE marklens_gui)
 add_test(NAME back COMMAND back_smoke)
 
-set_target_properties(frag_smoke back_smoke smoke_gui nav_smoke PROPERTIES WIN32_EXECUTABLE FALSE)
+# Find bar: the match count survives the re-render auto-reload does on save.
+qt_add_executable(find_smoke tests/find_smoke.cpp)
+target_link_libraries(find_smoke PRIVATE marklens_gui)
+add_test(NAME find COMMAND find_smoke)
+
+set_target_properties(frag_smoke back_smoke smoke_gui nav_smoke find_smoke
+                      PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME fragment COMMAND frag_smoke)
 
 set_tests_properties(smoke navigation fragment back PROPERTIES
