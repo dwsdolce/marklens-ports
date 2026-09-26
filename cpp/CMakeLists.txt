@@ -345,7 +345,16 @@ set_target_properties(frag_smoke back_smoke smoke_gui nav_smoke find_smoke
                       PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME fragment COMMAND frag_smoke)
 
-set_tests_properties(smoke navigation fragment back PROPERTIES
+# Named once and reused below. These lists were repeated at four call sites,
+# and a test added to some of them but not others fails in ways that name
+# nothing to do with the omission: without the offscreen platform it aborts on
+# a Linux runner with "could not connect to display" (and passes on macOS and
+# Windows, whose platform plugins need no display server), and without the
+# settings override it writes to the developer's own recent-files list.
+set(MARKLENS_GUI_TESTS smoke navigation fragment back find)
+set(MARKLENS_ALL_TESTS core ${MARKLENS_GUI_TESTS})
+
+set_tests_properties(${MARKLENS_GUI_TESTS} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --no-sandbox;QTWEBENGINE_DISABLE_SANDBOX=1"
 )
 
@@ -362,14 +371,14 @@ set_tests_properties(smoke navigation fragment back PROPERTIES
 # APPEND, because set_tests_properties REPLACES a property rather than adding
 # to it: the Windows PATH entry below sets ENVIRONMENT_MODIFICATION too, and
 # whichever ran second used to silently discard the other.
-set_property(TEST core smoke navigation fragment back APPEND PROPERTY
+set_property(TEST ${MARKLENS_ALL_TESTS} APPEND PROPERTY
     ENVIRONMENT_MODIFICATION
         "MARKLENS_SETTINGS=set:${CMAKE_CURRENT_BINARY_DIR}/test-settings.json")
 
 if(WIN32)
     get_filename_component(_qt_kit "${Qt6_DIR}/../../.." ABSOLUTE)
     if(EXISTS "${_qt_kit}/bin")
-        set_property(TEST core smoke navigation fragment back APPEND PROPERTY
+        set_property(TEST ${MARKLENS_ALL_TESTS} APPEND PROPERTY
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qt_kit}/bin")
     endif()
 endif()
