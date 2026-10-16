@@ -55,9 +55,9 @@ def main() -> int:
     def check() -> None:
         case = cases[state["at"]]
         shown = win._find_count.text()
-        if case["phrase"] == "":
-            got, err = 0, False
-        elif shown == "No matches":
+        # An empty field leaves the label empty, which means the same as
+        # having searched and found nothing.
+        if case["phrase"] == "" or shown == "No matches":
             got, err = 0, False
         elif shown == "Bad pattern":
             got, err = 0, True
