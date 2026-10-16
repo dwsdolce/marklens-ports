@@ -131,6 +131,10 @@ QString page(const QString &body, const QString &assetBase, bool dark) {
 <link rel="stylesheet" id="hljs-theme" href="%2/%3">
 <script src="%2/highlight.min.js" defer></script>
 <script src="%2/mermaid.min.js" defer></script>
+<!-- The find bar drives this through runJavaScript. QWebEnginePage::FindFlag
+     is FindBackward and FindCaseSensitively and nothing else, so whole words
+     and regular expressions cannot be options on top of findText. -->
+<script src="%2/find.js" defer></script>
 </head>
 <body>
 <article id="content">

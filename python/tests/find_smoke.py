@@ -43,8 +43,9 @@ def main() -> int:
             state["loads"] += 1
             if state["loads"] == 1:
                 win._focus_find()
+                # Typing is the whole search: textChanged runs it. Calling
+                # _find_text as well would step to the second match.
                 win._find_input.setText("needle")
-                win._find_text(False)
                 QTimer.singleShot(800, first_search_done)
             else:
                 QTimer.singleShot(800, after_rerender)

@@ -2,6 +2,8 @@
 #include <QMainWindow>
 #include <QStringList>
 
+#include <functional>
+
 class QWebEngineView;
 class MarkdownPage;
 class QFileSystemWatcher;
@@ -11,6 +13,8 @@ class QMenu;
 class QLabel;
 class QToolBar;
 class QToolButton;
+class QCheckBox;
+class QListWidget;
 
 // A window with a web view, a toolbar, and a file watcher. Off-sandbox the
 // page's base URL is the document's folder, so Qt resolves relative images and
@@ -66,9 +70,24 @@ private:
     void zoom(int direction);
     void zoomReset();
     void buildFindBar();
+    void buildFindPanel();
     void toggleFind();
     void hideFind();
+    void toggleFindPanel(bool shown);
+    void optionChanged();
+    // Searching and stepping are different acts: typing searches from the
+    // top, because the phrase has changed and the last search's hits are not
+    // the ones to step through.
+    void runSearch();
+    void clearSearch();
     void findText(bool backward);
+    QString query() const;
+    void runFindJs(const QString &expression,
+                   const std::function<void(const QVariant &)> &callback = {});
+    void searchDone(const QVariant &raw);
+    void fillResults(int current);
+    void markCurrentRow(int index);
+    void rowChosen(int row);
     void setStale(bool stale);
     static bool startNewInstance(const QString &path);
     void buildPathMenu();
@@ -89,6 +108,14 @@ private:
     QMenu *m_recentMenu;
     QToolBar *m_toolBar;
     QToolBar *m_findBar;
+    QToolBar *m_findPanel;
+    QToolButton *m_findOptionsButton;
+    QCheckBox *m_findCase;
+    QCheckBox *m_findWord;
+    QCheckBox *m_findRegex;
+    QCheckBox *m_findWrap;
+    QLabel *m_findError;
+    QListWidget *m_findResults;
     QToolButton *m_docButton;
     QMenu *m_pathMenu;
     QLabel *m_findCount;

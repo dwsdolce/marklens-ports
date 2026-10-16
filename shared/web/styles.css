@@ -217,3 +217,16 @@ mark.ml-find-current {
     background: rgba(255, 165, 0, 0.65);
     outline: 2px solid rgba(255, 200, 80, 0.9);
 }
+
+/* Search hits. All three ports mark matches themselves - see
+   shared/web/find.js - so the highlight is drawn here rather than by the
+   browser's own find, which the Qt ports used to rely on. The active one is
+   the accent so it can be picked out of the others while stepping. */
+#content mark.find-hit {
+  background: rgba(255, 213, 0, 0.45);
+  color: inherit;
+}
+#content mark.find-hit.active {
+  background: #e8952f;
+  color: #000;
+}

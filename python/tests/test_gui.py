@@ -25,7 +25,9 @@ ENV = {
 
 
 @pytest.mark.parametrize(
-    "script", ["smoke_gui.py", "nav_smoke.py", "back_smoke.py", "find_smoke.py"]
+    "script",
+    ["smoke_gui.py", "nav_smoke.py", "back_smoke.py", "find_smoke.py",
+     "find_cases_smoke.py"],
 )
 def test_gui_script(script: str, tmp_path) -> None:
     # These drive the real MainWindow, which records every document it opens in

@@ -74,13 +74,15 @@ port needs no build step, so the wrapper only sets `PYTHONPATH` and checks the
 venv, and exists mostly so the verb matches the other two ports.
 
 `pytest` runs everything: the shared-fixture logic tests (`test_renderer.py`,
-`test_links.py`, loading `../shared/spec/fixtures/*.json`) plus four GUI checks
+`test_links.py`, loading `../shared/spec/fixtures/*.json`) plus five GUI checks
 (`test_gui.py`), launched as offscreen subprocesses — `smoke_gui.py` (render —
 image, mermaid, table, highlight), `nav_smoke.py` (clicks a link in the real
 MainWindow and verifies it navigates without trapping), `back_smoke.py`
 (follows an in-page anchor, presses Back, and checks it returns to where the
-link was read rather than reopening the previous document), and `find_smoke.py`
-(searches, re-renders the document, and checks the match count came back).
+link was read rather than reopening the previous document), `find_smoke.py`
+(searches, re-renders the document, and checks the match count came back), and
+`find_cases_smoke.py` (every case in the shared `find_cases.json`, plus the
+options panel, the results list and wrap-around).
 
 ## Package
 

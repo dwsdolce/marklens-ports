@@ -62,4 +62,5 @@ rust/frontend/highlight.min.js
 rust/frontend/hljs-dark.css
 rust/frontend/hljs-light.css
 rust/frontend/mermaid.min.js
+rust/frontend/find.js
 rust/frontend/icons/

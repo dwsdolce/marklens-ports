@@ -15,21 +15,26 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QJsonDocument>
 #include <QFileInfo>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QFileSystemWatcher>
 #include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
 #include <QKeySequence>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSize>
 #include <QSizePolicy>
 #include <QSet>
@@ -39,7 +44,6 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWebEngineContextMenuRequest>
-#include <QWebEngineFindTextResult>
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -559,7 +563,9 @@ void MainWindow::buildFindBar() {
     m_find->setClearButtonEnabled(true);
     m_find->setMaximumWidth(240);
     // Searching as you type, as the Swift bar does; Return steps to the next.
-    connect(m_find, &QLineEdit::textChanged, this, [this] { findText(false); });
+    // Typing searches from the top rather than stepping: the phrase has
+    // changed, so the hits the last one left are not the ones to step through.
+    connect(m_find, &QLineEdit::textChanged, this, [this] { runSearch(); });
     connect(m_find, &QLineEdit::returnPressed, this, [this] { findText(false); });
     m_findBar->addWidget(m_find);
 
@@ -576,11 +582,20 @@ void MainWindow::buildFindBar() {
         connect(b, &QPushButton::clicked, this, slot);
         m_findBar->addWidget(b);
     };
+    m_findOptionsButton = new QToolButton(this);
+    m_findOptionsButton->setText(QStringLiteral("\u25be"));
+    m_findOptionsButton->setAutoRaise(true);
+    m_findOptionsButton->setCheckable(true);
+    m_findOptionsButton->setToolTip("Search options and all matches");
+    connect(m_findOptionsButton, &QToolButton::toggled, this, &MainWindow::toggleFindPanel);
+    m_findBar->addWidget(m_findOptionsButton);
+
     button("find-prev", "Previous match", [this] { findText(true); });
     button("find-next", "Next match", [this] { findText(false); });
     button("close", "Close find bar", [this] { hideFind(); });
 
     m_findBar->hide();
+    buildFindPanel();
 
     // Escape closes it, as in the Swift bar.
     auto *esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
@@ -604,28 +619,203 @@ void MainWindow::toggleFind() {
 
 void MainWindow::hideFind() {
     m_findBar->hide();
-    m_view->findText({}); // drops the highlight
-    m_findCount->clear();
+    m_findOptionsButton->setChecked(false);
+    m_findPanel->hide();
+    clearSearch();
     m_view->setFocus();
 }
 
+// The search options and the list of every match. A row of its own under the
+// find bar, hidden until the disclosure button is pressed. The options do not
+// go in the bar itself: four checkboxes with readable labels do not fit on one
+// line, and abbreviating them to "Aa" and ".*" asks the reader to know what
+// those mean. Another toolbar rather than something in the central widget,
+// because that is already how the find bar sits above the document.
+void MainWindow::buildFindPanel() {
+    m_findPanel = new QToolBar("Find options", this);
+    m_findPanel->setMovable(false);
+    addToolBarBreak();
+    addToolBar(m_findPanel);
+
+    auto *holder = new QWidget(this);
+    auto *layout = new QVBoxLayout(holder);
+    layout->setContentsMargins(8, 4, 8, 4);
+    layout->setSpacing(4);
+
+    auto *options = new QHBoxLayout;
+    options->setSpacing(18);
+    m_findCase = new QCheckBox("Case sensitive", holder);
+    m_findWord = new QCheckBox("Whole words only", holder);
+    m_findRegex = new QCheckBox("Regular expression", holder);
+    m_findRegex->setToolTip(
+        // Delimited, because the text itself contains )" - the default raw
+        // string would end in the middle of the example.
+        R"tip(Interpret the text as a regular expression, so that "tap(s|ping)" matches either word.)tip");
+    m_findWrap = new QCheckBox("Wrap around", holder);
+    m_findWrap->setChecked(true);
+    m_findWrap->setToolTip(
+        "Carry on from the other end of the document when the last match is passed.");
+    for (auto *box : {m_findCase, m_findWord, m_findRegex, m_findWrap})
+        options->addWidget(box);
+    options->addStretch(1);
+    layout->addLayout(options);
+
+    for (auto *box : {m_findCase, m_findWord, m_findRegex}) {
+        // An option changes what matches, so it searches at once rather than
+        // waiting to be told again: the click *is* the deliberate act.
+        connect(box, &QCheckBox::toggled, this, &MainWindow::optionChanged);
+    }
+    // Wrap is the exception: it changes what the *next* step does, not what
+    // matches, so re-running on it would throw away your place for nothing.
+
+    m_findError = new QLabel(holder);
+    m_findError->setStyleSheet("color: palette(link-visited)");
+    m_findError->hide();
+    layout->addWidget(m_findError);
+
+    m_findResults = new QListWidget(holder);
+    m_findResults->setMaximumHeight(160);
+    m_findResults->setUniformItemSizes(true);
+    connect(m_findResults, &QListWidget::currentRowChanged, this, &MainWindow::rowChosen);
+    layout->addWidget(m_findResults);
+
+    m_findPanel->addWidget(holder);
+    m_findPanel->hide();
+}
+
+void MainWindow::toggleFindPanel(bool shown) {
+    m_findPanel->setVisible(shown);
+    if (shown)
+        fillResults(-1);
+}
+
+void MainWindow::optionChanged() {
+    // A regular expression brings its own word boundaries, and wrapping
+    // somebody's pattern in lookarounds behind their back is worse than
+    // refusing the combination.
+    m_findWord->setEnabled(!m_findRegex->isChecked());
+    runSearch();
+}
+
+// The search, as the JSON literal the engine takes.
+QString MainWindow::query() const {
+    QJsonObject object{
+        {"phrase", m_find->text()},
+        {"caseSensitive", m_findCase->isChecked()},
+        {"wholeWord", m_findWord->isChecked()},
+        {"regex", m_findRegex->isChecked()},
+    };
+    return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+// Everything the find bar does goes through here. The page may not have the
+// engine yet - between a reload starting and the script running - so every
+// call site tolerates a null result rather than assuming it.
+void MainWindow::runFindJs(const QString &expression,
+                           const std::function<void(const QVariant &)> &callback) {
+    if (callback)
+        m_view->page()->runJavaScript(expression, 0, callback);
+    else
+        m_view->page()->runJavaScript(expression, 0);
+}
+
+void MainWindow::clearSearch() {
+    runFindJs(QStringLiteral("window.MarklensFind && window.MarklensFind.clear()"));
+    m_findCount->clear();
+    m_findResults->clear();
+    m_findError->hide();
+}
+
+// Search and go to the first match. What typing does.
+void MainWindow::runSearch() {
+    if (m_find->text().isEmpty()) {
+        clearSearch();
+        return;
+    }
+    runFindJs(QStringLiteral("JSON.stringify(window.MarklensFind "
+                             "? window.MarklensFind.run(%1) : null)")
+                  .arg(query()),
+              [this](const QVariant &raw) { searchDone(raw); });
+}
+
+// Step to the next or previous match. What Return and the arrows do.
 void MainWindow::findText(bool backward) {
-    const QString needle = m_find->text();
-    if (needle.isEmpty()) {
-        m_view->findText({});
+    if (m_find->text().isEmpty()) {
+        clearSearch();
+        return;
+    }
+    runFindJs(QStringLiteral("JSON.stringify(window.MarklensFind "
+                             "? window.MarklensFind.advance(%1, %2, %3) : null)")
+                  .arg(query(),
+                       backward ? QStringLiteral("true") : QStringLiteral("false"),
+                       m_findWrap->isChecked() ? QStringLiteral("true")
+                                               : QStringLiteral("false")),
+              [this](const QVariant &raw) { searchDone(raw); });
+}
+
+// Put the count, any error, and the list up. Called from the page.
+void MainWindow::searchDone(const QVariant &raw) {
+    const QJsonDocument parsed = QJsonDocument::fromJson(raw.toString().toUtf8());
+    if (!parsed.isObject()) {
         m_findCount->clear();
         return;
     }
-    QWebEnginePage::FindFlags flags;
-    if (backward)
-        flags |= QWebEnginePage::FindBackward;
-    // The count comes back asynchronously, so the label is filled in from the
-    // callback rather than alongside the search.
-    m_view->findText(needle, flags, [this](const QWebEngineFindTextResult &r) {
-        m_findCount->setText(r.numberOfMatches()
-                                 ? QString("%1 of %2").arg(r.activeMatch()).arg(r.numberOfMatches())
-                                 : QStringLiteral("No matches"));
-    });
+    const QJsonObject state = parsed.object();
+    const QString error = state.value("error").toString();
+    const int count = state.value("count").toInt();
+    const int index = state.value("index").toInt(-1);
+
+    m_findError->setVisible(!error.isEmpty());
+    if (!error.isEmpty())
+        m_findError->setText(error);
+
+    if (!error.isEmpty())
+        m_findCount->setText(QStringLiteral("Bad pattern"));
+    else if (count == 0)
+        m_findCount->setText(QStringLiteral("No matches"));
+    else
+        m_findCount->setText(QStringLiteral("%1 of %2%3")
+                                 .arg(index < 0 ? 1 : index + 1)
+                                 .arg(count)
+                                 .arg(state.value("truncated").toBool() ? "+" : ""));
+
+    if (m_findPanel->isVisible())
+        fillResults(index);
+    markCurrentRow(index);
+}
+
+void MainWindow::fillResults(int current) {
+    runFindJs(
+        QStringLiteral("JSON.stringify(window.MarklensFind ? window.MarklensFind.list() : [])"),
+        [this, current](const QVariant &raw) {
+            const QJsonArray rows = QJsonDocument::fromJson(raw.toString().toUtf8()).array();
+            const QSignalBlocker blocker(m_findResults);
+            m_findResults->clear();
+            for (const QJsonValue &value : rows) {
+                const QJsonObject hit = value.toObject();
+                m_findResults->addItem(hit.value("before").toString()
+                                       + hit.value("text").toString()
+                                       + hit.value("after").toString());
+            }
+            markCurrentRow(current);
+        });
+}
+
+// Keep the list and the document agreeing about where you are.
+void MainWindow::markCurrentRow(int index) {
+    if (index >= 0 && index < m_findResults->count()) {
+        const QSignalBlocker blocker(m_findResults);
+        m_findResults->setCurrentRow(index);
+    }
+}
+
+void MainWindow::rowChosen(int row) {
+    if (row < 0)
+        return;
+    runFindJs(QStringLiteral("JSON.stringify(window.MarklensFind "
+                             "? window.MarklensFind.show(%1) : null)")
+                  .arg(row),
+              [this](const QVariant &raw) { searchDone(raw); });
 }
 
 void MainWindow::showContextMenu(const QPoint &pos) {

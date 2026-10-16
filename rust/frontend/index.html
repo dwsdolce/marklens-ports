@@ -15,6 +15,11 @@
   <link rel="stylesheet" href="chrome.css" />
   <script src="highlight.min.js" defer></script>
   <script src="mermaid.min.js" defer></script>
+  <!-- Before main.js, and a classic script rather than a module, because the
+       Qt ports load the same file into the page with a plain <script src>.
+       Deferred scripts run in order, and modules run after all of them, so
+       window.MarklensFind exists by the time main.js asks for it. -->
+  <script src="find.js" defer></script>
   <script src="main.js" type="module" defer></script>
 </head>
 <body>
@@ -48,14 +53,33 @@
   </div>
 
   <!-- A bar of its own below the toolbar, as in the Swift app, with room for
-       the match count and the previous/next/close buttons. -->
+       the match count and the previous/next/close buttons.
+
+       The options and the list of matches live in a panel underneath rather
+       than in the bar: four checkboxes with readable labels do not fit on one
+       line, and abbreviating them to "Aa" and ".*" asks the reader to know
+       what those mean. The disclosure button is the only thing the bar
+       gains. -->
   <div id="findbar" hidden>
     <span class="icon findbar-glyph" style="--i:url('icons/find.svg')"></span>
     <input id="find-input" type="search" placeholder="Find" />
     <span id="find-count"></span>
+    <button data-act="find-options" id="find-options-btn" title="Search options and all matches" aria-expanded="false"><span class="caret">&#x25BE;</span></button>
     <button data-act="find-prev" title="Previous match"><span class="icon" style="--i:url('icons/find-prev.svg')"></span></button>
     <button data-act="find-next" title="Next match"><span class="icon" style="--i:url('icons/find-next.svg')"></span></button>
     <button data-act="find-close" title="Close find bar"><span class="icon" style="--i:url('icons/close.svg')"></span></button>
+  </div>
+
+  <!-- Same four options and the same wording as the other two ports. -->
+  <div id="find-panel" hidden>
+    <div id="find-options">
+      <label><input type="checkbox" id="find-case"> Case sensitive</label>
+      <label><input type="checkbox" id="find-word"> Whole words only</label>
+      <label title="Interpret the text as a regular expression, so that &quot;tap(s|ping)&quot; matches either word."><input type="checkbox" id="find-regex"> Regular expression</label>
+      <label title="Carry on from the other end of the document when the last match is passed."><input type="checkbox" id="find-wrap" checked> Wrap around</label>
+    </div>
+    <div id="find-error" hidden></div>
+    <ul id="find-results"></ul>
   </div>
 
   <!-- Both populated on demand: the path menu from the open document, the

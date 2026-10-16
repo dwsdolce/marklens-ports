@@ -31,21 +31,24 @@ from PySide6.QtGui import (
     QShortcut,
 )
 from PySide6.QtWebEngineCore import (
-    QWebEngineFindTextResult,
     QWebEnginePage,
     QWebEngineSettings,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
     QMenu,
     QPushButton,
     QSizePolicy,
     QToolBar,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -379,7 +382,10 @@ class MainWindow(QMainWindow):
         self._find_input.setClearButtonEnabled(True)
         self._find_input.setMaximumWidth(240)
         # Searching as you type, as the Swift bar does; Return steps to the next.
-        self._find_input.textChanged.connect(lambda _: self._find_text(False))
+        # Typing searches from the top rather than stepping: the phrase has
+        # changed, so the hits the last one left are not the ones to step
+        # through.
+        self._find_input.textChanged.connect(lambda _: self._run_search())
         self._find_input.returnPressed.connect(lambda: self._find_text(False))
         self._find_bar.addWidget(self._find_input)
 
@@ -396,15 +402,98 @@ class MainWindow(QMainWindow):
             b.clicked.connect(slot)
             self._find_bar.addWidget(b)
 
+        options_button = QToolButton(self)
+        options_button.setText("▾")
+        options_button.setAutoRaise(True)
+        options_button.setCheckable(True)
+        options_button.setToolTip("Search options and all matches")
+        options_button.toggled.connect(self._toggle_find_panel)
+        self._find_options_button = options_button
+        self._find_bar.addWidget(options_button)
+
         button("find-prev", "Previous match", lambda: self._find_text(True))
         button("find-next", "Next match", lambda: self._find_text(False))
         button("close", "Close find bar", self._hide_find)
 
         self._find_bar.hide()
+        self._build_find_panel()
 
         # Escape closes it, as in the Swift bar.
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(lambda: self._hide_find() if self._find_bar.isVisible() else None)
+
+    def _build_find_panel(self) -> None:
+        """The search options and the list of every match.
+
+        A row of its own under the find bar, hidden until the disclosure
+        button is pressed. The options do not go in the bar itself: four
+        checkboxes with readable labels do not fit on one line, and
+        abbreviating them to "Aa" and ".*" asks the reader to know what those
+        mean. Another toolbar rather than something in the central widget,
+        because that is already how the find bar sits above the document.
+        """
+        self._find_panel = QToolBar("Find options", self)
+        self._find_panel.setMovable(False)
+        self.addToolBarBreak()
+        self.addToolBar(self._find_panel)
+
+        holder = QWidget(self)
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(4)
+
+        options = QHBoxLayout()
+        options.setSpacing(18)
+        self._find_case = QCheckBox("Case sensitive", holder)
+        self._find_word = QCheckBox("Whole words only", holder)
+        self._find_regex = QCheckBox("Regular expression", holder)
+        self._find_regex.setToolTip(
+            'Interpret the text as a regular expression, so that "tap(s|ping)" '
+            "matches either word."
+        )
+        self._find_wrap = QCheckBox("Wrap around", holder)
+        self._find_wrap.setChecked(True)
+        self._find_wrap.setToolTip(
+            "Carry on from the other end of the document when the last match "
+            "is passed."
+        )
+        for box in (self._find_case, self._find_word, self._find_regex, self._find_wrap):
+            options.addWidget(box)
+        options.addStretch(1)
+        layout.addLayout(options)
+
+        for box in (self._find_case, self._find_word, self._find_regex):
+            # An option changes what matches, so it searches at once rather
+            # than waiting to be told again: the click *is* the deliberate act.
+            box.toggled.connect(self._option_changed)
+        # Wrap is the exception: it changes what the *next* step does, not what
+        # matches, so re-running on it would throw away your place for nothing.
+
+        self._find_error = QLabel(holder)
+        self._find_error.setStyleSheet("color: palette(link-visited)")
+        self._find_error.hide()
+        layout.addWidget(self._find_error)
+
+        self._find_results = QListWidget(holder)
+        self._find_results.setMaximumHeight(160)
+        self._find_results.setUniformItemSizes(True)
+        self._find_results.currentRowChanged.connect(self._row_chosen)
+        layout.addWidget(self._find_results)
+
+        self._find_panel.addWidget(holder)
+        self._find_panel.hide()
+
+    def _toggle_find_panel(self, shown: bool) -> None:
+        self._find_panel.setVisible(shown)
+        if shown:
+            self._fill_results()
+
+    def _option_changed(self) -> None:
+        # A regular expression brings its own word boundaries, and wrapping
+        # somebody's pattern in lookarounds behind their back is worse than
+        # refusing the combination.
+        self._find_word.setEnabled(not self._find_regex.isChecked())
+        self._run_search()
 
     def _focus_find(self) -> None:
         # Cmd+F on an open bar that already has the caret means "put it away";
@@ -418,8 +507,12 @@ class MainWindow(QMainWindow):
 
     def _hide_find(self) -> None:
         self._find_bar.hide()
-        self._view.findText("")  # drops the highlight
+        self._find_options_button.setChecked(False)
+        self._find_panel.hide()
+        self._run_find_js("window.MarklensFind && window.MarklensFind.clear()")
         self._find_count.clear()
+        self._find_results.clear()
+        self._find_error.hide()
         self._view.setFocus()
 
     def _show_toolbar_menu(self, pos) -> None:
@@ -713,7 +806,7 @@ class MainWindow(QMainWindow):
         before it lands searches the old document.
         """
         if ok and self._find_bar.isVisible() and self._find_input.text():
-            self._find_text(False)
+            self._run_search()
 
     def _scroll_to_pending_fragment(self, ok: bool) -> None:
         """Honour a #fragment that arrived with a link to *another* document.
@@ -847,21 +940,111 @@ class MainWindow(QMainWindow):
     def _zoom_reset(self) -> None:
         self._view.setZoomFactor(1.0)
 
+    def _query(self) -> str:
+        """The search, as the JSON literal the engine takes."""
+        return json.dumps(
+            {
+                "phrase": self._find_input.text(),
+                "caseSensitive": self._find_case.isChecked(),
+                "wholeWord": self._find_word.isChecked(),
+                "regex": self._find_regex.isChecked(),
+            }
+        )
+
+    def _run_find_js(self, expression: str, callback=None) -> None:
+        """Run one expression in the page, in the main world.
+
+        Everything the find bar does goes through here. The page may not have
+        the engine yet - between a reload starting and the script running -
+        so every call site tolerates a null result rather than assuming it.
+        """
+        if callback is None:
+            self._view.page().runJavaScript(expression, 0)
+        else:
+            self._view.page().runJavaScript(expression, 0, callback)
+
+    def _run_search(self) -> None:
+        """Search and go to the first match. What typing does."""
+        if not self._find_input.text():
+            self._clear_search()
+            return
+        self._run_find_js(
+            "JSON.stringify(window.MarklensFind "
+            f"? window.MarklensFind.run({self._query()}) : null)",
+            self._search_done,
+        )
+
+    def _clear_search(self) -> None:
+        self._run_find_js("window.MarklensFind && window.MarklensFind.clear()")
+        self._find_count.clear()
+        self._find_results.clear()
+        self._find_error.hide()
+
     def _find_text(self, backward: bool) -> None:
-        needle = self._find_input.text()
-        if not needle:
-            self._view.findText("")
+        """Step to the next or previous match. What Return and the arrows do."""
+        if not self._find_input.text():
+            self._clear_search()
+            return
+        wrap = "true" if self._find_wrap.isChecked() else "false"
+        back = "true" if backward else "false"
+        self._run_find_js(
+            "JSON.stringify(window.MarklensFind "
+            f"? window.MarklensFind.advance({self._query()}, {back}, {wrap}) : null)",
+            self._search_done,
+        )
+
+    def _search_done(self, raw: str) -> None:
+        """Put the count, any error, and the list up. Called from the page."""
+        state = json.loads(raw) if raw else None
+        if state is None:
             self._find_count.clear()
             return
-        flags = QWebEnginePage.FindFlag.FindBackward if backward else QWebEnginePage.FindFlag(0)
 
-        # The count comes back asynchronously, so the label is filled in from
-        # the callback rather than alongside the search.
-        def show(result: QWebEngineFindTextResult) -> None:
-            n = result.numberOfMatches()
-            self._find_count.setText(f"{result.activeMatch()} of {n}" if n else "No matches")
+        self._find_error.setVisible(bool(state["error"]))
+        if state["error"]:
+            self._find_error.setText(state["error"])
 
-        self._view.findText(needle, flags, show)
+        if state["error"]:
+            self._find_count.setText("Bad pattern")
+        elif not state["count"]:
+            self._find_count.setText("No matches")
+        else:
+            where = 1 if state["index"] < 0 else state["index"] + 1
+            self._find_count.setText(
+                f"{where} of {state['count']}" + ("+" if state["truncated"] else "")
+            )
+
+        if self._find_panel.isVisible():
+            self._fill_results(state["index"])
+        self._mark_current_row(state["index"])
+
+    def _fill_results(self, current: int = -1) -> None:
+        self._run_find_js(
+            "JSON.stringify(window.MarklensFind ? window.MarklensFind.list() : [])",
+            lambda raw: self._results_ready(raw, current),
+        )
+
+    def _results_ready(self, raw: str, current: int) -> None:
+        self._find_results.blockSignals(True)
+        self._find_results.clear()
+        for hit in json.loads(raw) if raw else []:
+            self._find_results.addItem(f"{hit['before']}{hit['text']}{hit['after']}")
+        self._find_results.blockSignals(False)
+        self._mark_current_row(current)
+
+    def _mark_current_row(self, index: int) -> None:
+        """Keep the list and the document agreeing about where you are."""
+        if 0 <= index < self._find_results.count():
+            self._find_results.blockSignals(True)
+            self._find_results.setCurrentRow(index)
+            self._find_results.blockSignals(False)
+
+    def _row_chosen(self, row: int) -> None:
+        if row >= 0:
+            self._run_find_js(
+                f"JSON.stringify(window.MarklensFind ? window.MarklensFind.show({row}) : null)",
+                self._search_done,
+            )
 
     def _find_next(self) -> None:
         self._find_text(False)

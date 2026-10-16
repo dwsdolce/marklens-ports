@@ -115,6 +115,10 @@ def page(body: str, *, asset_base: str, dark: bool = False) -> str:
 <link rel="stylesheet" id="hljs-theme" href="{asset_base}/{hljs}">
 <script src="{asset_base}/highlight.min.js" defer></script>
 <script src="{asset_base}/mermaid.min.js" defer></script>
+<!-- The find bar drives this through runJavaScript. QWebEnginePage::FindFlag
+     is FindBackward and FindCaseSensitively and nothing else, so whole words
+     and regular expressions cannot be options on top of findText. -->
+<script src="{asset_base}/find.js" defer></script>
 </head>
 <body>
 <article id="content">

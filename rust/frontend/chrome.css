@@ -178,15 +178,72 @@ article#content {
   font-variant-numeric: tabular-nums;
 }
 
-/* Search hits. The active one is the accent so it can be picked out of the
-   others while stepping, as the Qt ports' active match is. */
-#content mark.find-hit {
-  background: rgba(255, 213, 0, 0.45);
-  color: inherit;
+/* The options and the match list. Hidden until the disclosure button is
+   pressed, so the bar stays one line for the common case of typing a word and
+   pressing Return. Same four options, same wording, as the Qt ports. */
+#find-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  background: Canvas;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  font: menu;
+  font-size: 12px;
 }
-#content mark.find-hit.active {
-  background: #e8952f;
-  color: #000;
+#find-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding: 6px 12px;
+}
+#find-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+#find-options input:disabled + *,
+#find-options label:has(input:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+#find-error {
+  padding: 2px 12px 6px;
+  color: #c0392b;
+  font-variant-numeric: tabular-nums;
+}
+#find-results {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+}
+#find-results:empty {
+  border-top: none;
+}
+#find-results li {
+  padding: 3px 12px;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+#find-results li:hover {
+  background: rgba(128, 128, 128, 0.14);
+}
+/* The row for the hit the document is scrolled to, so the list and the page
+   agree about where you are. */
+#find-results li.current {
+  background: rgba(128, 128, 128, 0.22);
+  opacity: 1;
+}
+#find-results strong {
+  background: rgba(255, 213, 0, 0.45);
+  font-weight: 600;
 }
 
 #help-overlay {

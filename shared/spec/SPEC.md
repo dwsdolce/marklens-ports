@@ -242,27 +242,91 @@ hand.
 ## Find
 
 A bar of its own below the toolbar, hidden until asked for, holding a search
-field, the match count (`3 of 12`, or `No matches`), and previous, next and
-close buttons. Escape closes it. Searching happens as you type; Return steps to
-the next match.
+field, the match count (`3 of 12`, or `No matches`), a disclosure button, and
+previous, next and close buttons. Escape closes it. Typing searches from the
+top; Return and the arrows step.
 
-The count is the reason the Rust port cannot use the webview's own `window.find`
-- it reports whether something matched, not how many - so that port marks the
-hits in the DOM itself and colours the active one apart from the rest.
+**All three ports share one search engine**, `shared/web/find.js`, which runs
+in the page. The Qt ports drive it through `runJavaScript` and the Rust port
+calls it directly. This is not tidiness: `QWebEnginePage::FindFlag` is
+`FindBackward` and `FindCaseSensitively` and nothing else, so whole words and
+regular expressions cannot be options on top of `findText`, and the Rust port
+could never use `window.find` because it reports whether something matched but
+not how many. Neither host API can express the contract, so neither is used.
+
+### Options
+
+Four, in a panel under the bar rather than in the bar itself - four readable
+labels do not fit on one line, and abbreviating them to `Aa` and `.*` asks the
+reader to know what those mean. The same wording in all three ports:
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| Case sensitive | off | `Needle` stops matching `needle` |
+| Whole words only | off | `tap` stops matching `taps` |
+| Regular expression | off | `tap(s\|ping)` matches either word |
+| Wrap around | **on** | the last match steps round to the first |
+
+Changing any of the first three searches again at once: the click *is* the
+deliberate act. Wrap is the exception - it changes what the *next* step does,
+not what matches, so re-running on it would throw away your place for nothing.
+
+Whole words is **disabled while a regular expression is in force**. A pattern
+brings its own boundaries, and wrapping somebody's pattern in lookarounds
+behind their back is worse than refusing the combination.
+
+Whole words is bounded with lookarounds, `(?<!\w)(?:…)(?!\w)`, rather than
+`\b`. `\b` is defined against the *pattern's* neighbouring character and so
+does the wrong thing whenever a phrase starts or ends with punctuation: `\b`
+around `(tap` asks for a word boundary before `(`, which is true in the middle
+of a word and false after a space, and matches backwards.
+
+Lookbehind is the one thing the engine needs that is not ancient JavaScript.
+Chromium has had it since 62 and JavaScriptCore since Safari 16.4, which
+covers Qt WebEngine, WebView2 and current WebKitGTK and WKWebView - but it is
+the assertion to check first if whole words misbehaves on a platform nobody
+has tried yet.
+
+An invalid pattern is not an error condition. Half-typed patterns are the
+normal case - `(foo` is invalid for as long as it takes to reach the closing
+bracket - so the bar says `Bad pattern`, shows the message, and finds nothing.
+
+### The results list
+
+The same panel lists every match with the text around it, 40 characters either
+side, the match itself picked out. Choosing a row scrolls the document to that
+hit and makes it the current one, so the list and the page always agree about
+where you are. Stepping with the arrows moves the selected row too.
+
+### What is searched
+
+The document's own text, flattened to one string and searched as a whole
+rather than node by node. Searching per node is simpler, but it cannot see a
+phrase that spans an element, and `the **bold** word` is three text nodes.
+
+Flattening normalises the way a browser does, because the HTML a Markdown
+renderer emits is full of whitespace nobody can see: a run of whitespace
+becomes one space, so a phrase matches across a line break in the source; and
+a block boundary becomes a line break, so a phrase does **not** match across
+the end of one paragraph and the start of the next. Script, style and SVG
+content is skipped - replacing nodes inside a rendered mermaid diagram
+corrupts it.
+
+A document with more than 5000 matches is being pattern-matched rather than
+read; marking stops there and the count is shown as `5000+`.
 
 **A re-render re-runs the search.** Auto-reload rebuilds the page on every save
-of the file being read, which throws away everything the search was holding: in
-Qt the highlights, in Rust the marked nodes the count is computed from. Left
-alone the bar looks broken rather than empty - the count still shows a number,
-and stepping through nodes that are no longer in the document moves nothing on
-screen. All three ports therefore re-run the current search once the new page
-has loaded, if the bar is open and the field is not empty.
+of the file being read, which throws away everything the search was holding.
+Left alone the bar looks broken rather than empty - the count still shows a
+number, and stepping through nodes that are no longer in the document moves
+nothing on screen. All three ports re-run the current search once the new page
+has loaded, if the bar is open and the field is not empty, and the engine
+itself notices stale marks (`isConnected` on the first one) and searches again
+rather than stepping into detached nodes.
 
-Rust needs one thing more than the Qt ports: because it holds the hit list
-itself, stepping has to notice that the list has gone stale (`isConnected` on
-the first hit) and search again rather than step into detached nodes. The Qt
-ports hold no state - they delegate to `QWebEngineView::findText` - so for them
-re-running on load is the whole fix.
+The contract is `shared/spec/fixtures/find_cases.json`, counted against
+`find_doc.md`. The Qt ports run every case through the real find bar; the Rust
+port has no GUI test to run them from.
 
 ## Gotchas (learned the hard way — every webview port hits these)
 
@@ -338,6 +402,11 @@ Two layers, and the ports are not level with each other on the second.
 do: `test_core` (C++), `test_renderer`/`test_links` (Python), `fixtures.rs`
 (Rust).
 
+`find_cases.json` is the exception: the engine it tests is JavaScript running
+in the page, so it cannot be driven from C++ or Rust natively. The two Qt
+ports run it through their GUI tests instead, which is also the only way to
+test the bar that drives it.
+
 The link fixtures carry the cases images meet as well as links - an encoded
 space in a directory as well as a filename, a UTF-8 escape, and a literal `%` -
 since the Rust port resolves images with the same function. The literal `%`
@@ -353,8 +422,10 @@ images silently resolving against the wrong folder. C++ and Python cover it with
 `smoke_gui` (loads the sample and asserts, via JavaScript, that every image
 loaded - including two whose filename has a space, one in Markdown and one as
 raw HTML - that mermaid drew, and that code highlighted), `nav_smoke` (clicks a
-relative link and asserts the viewer navigated) and `find_smoke` (searches, then
-re-renders, and asserts the match count came back rather than going blank).
+relative link and asserts the viewer navigated), `find_smoke` (searches, then
+re-renders, and asserts the match count came back rather than going blank) and
+`find_cases_smoke` (every case in `find_cases.json`, plus the options panel,
+the results list and wrap-around, driven through the real bar).
 
 The Rust port has no equivalent, and the obstacle is structural rather than a
 missing file. C++ keeps its window code in a library, `marklens_gui`, which the

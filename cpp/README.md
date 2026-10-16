@@ -108,7 +108,7 @@ be told which to run. That flag is the reason these scripts exist: forget it
 and ctest reports "no tests were found" and exits cleanly, which reads like a
 broken checkout rather than a missing argument.
 
-Six tests, all headless — ctest sets the offscreen platform and the
+Seven tests, all headless — ctest sets the offscreen platform and the
 QtWebEngine sandbox flags for the GUI ones:
 
 | Test | What it covers |
@@ -119,6 +119,7 @@ QtWebEngine sandbox flags for the GUI ones:
 | `fragment` | Follows `other.md#heading`: opens the document *and* lands on the heading |
 | `back` | Follows an in-page anchor, presses Back, and checks it returns to where the link was read |
 | `find` | Searches, re-renders the document, and checks the match count came back |
+| `findcases` | Every case in `find_cases.json`, plus the options panel, the results list and wrap-around |
 
 Run one directly with, e.g.,
 `QT_QPA_PLATFORM=offscreen ./build/nav_smoke`.

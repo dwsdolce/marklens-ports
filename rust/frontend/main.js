@@ -18,7 +18,19 @@ const contextMenu = document.getElementById("context-menu");
 const toolbar = document.getElementById("toolbar");
 const findBar = document.getElementById("findbar");
 const findCount = document.getElementById("find-count");
+const findPanel = document.getElementById("find-panel");
+const findOptionsBtn = document.getElementById("find-options-btn");
+const findResults = document.getElementById("find-results");
+const findError = document.getElementById("find-error");
+const findCase = document.getElementById("find-case");
+const findWord = document.getElementById("find-word");
+const findRegex = document.getElementById("find-regex");
+const findWrap = document.getElementById("find-wrap");
 const reloadBtn = document.getElementById("reload-btn");
+
+// A classic script, so it arrives on the window rather than through an import.
+// See the script order in index.html.
+const MarklensFind = window.MarklensFind;
 
 // Reveal is an icon now, so the platform wording lives in its tooltip.
 {
@@ -361,74 +373,78 @@ function goBack() {
   show(prev.path, { recordHistory: false, scroll: prev.scroll });
 }
 
-// ── find ─────────────────────────────────────────────────────────────────────
+// ── find ──────────────────────────────────────────────────────────────────
 //
-// Matches are marked up rather than handed to window.find(). The native call is
-// less code, but it reports only whether it found something - no count, no
-// position - and the Qt ports and the Swift bar both show "3 of 12". Wrapping
-// the hits ourselves is what makes that number available, and it also lets the
-// active hit be coloured differently from the rest.
+// The searching itself is shared/web/find.js, which all three ports use: this
+// port once had its own copy, and a second implementation of "whole words"
+// would be a second set of answers. What is left here is the bar - reading the
+// options out of the checkboxes and putting the count and the list back.
+//
+// Matches are still marked up rather than handed to window.find(). The native
+// call is less code, but it reports only whether it found something - no
+// count, no position - and the Qt ports and the Swift bar both show "3 of 12".
 
-let hits = [];
-let hitIndex = -1;
-
-function clearHits() {
-  for (const mark of content.querySelectorAll("mark.find-hit")) {
-    const parent = mark.parentNode;
-    parent.replaceChild(document.createTextNode(mark.textContent), mark);
-    parent.normalize(); // rejoin the split text nodes, so a re-search sees whole words
-  }
-  hits = [];
-  hitIndex = -1;
-  findCount.textContent = "";
+function query() {
+  return {
+    phrase: findInput.value,
+    caseSensitive: findCase.checked,
+    wholeWord: findWord.checked,
+    regex: findRegex.checked,
+  };
 }
 
-function markHits(query) {
-  const needle = query.toLowerCase();
-  // Collected first: wrapping a match mutates the tree the walker is walking.
-  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!node.nodeValue.toLowerCase().includes(needle)) return NodeFilter.FILTER_REJECT;
-      // Skip anything whose text is not prose: <script>/<style> content, and
-      // the text inside a rendered mermaid diagram, where replacing nodes would
-      // corrupt the SVG.
-      const tag = node.parentElement?.closest("script, style, svg");
-      return tag ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const targets = [];
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) targets.push(n);
+function render(result) {
+  findError.hidden = !result.error;
+  if (result.error) findError.textContent = result.error;
 
-  for (const node of targets) {
-    const text = node.nodeValue;
-    const lower = text.toLowerCase();
-    const frag = document.createDocumentFragment();
-    let at = 0;
-    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, at)) {
-      if (i > at) frag.appendChild(document.createTextNode(text.slice(at, i)));
-      const mark = document.createElement("mark");
-      mark.className = "find-hit";
-      mark.textContent = text.slice(i, i + needle.length);
-      frag.appendChild(mark);
-      hits.push(mark);
-      at = i + needle.length;
-    }
-    if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
-    node.parentNode.replaceChild(frag, node);
+  if (!findInput.value) findCount.textContent = "";
+  else if (result.error) findCount.textContent = "Bad pattern";
+  else if (!result.count) findCount.textContent = "No matches";
+  else {
+    const where = result.index < 0 ? 1 : result.index + 1;
+    findCount.textContent = `${where} of ${result.count}` +
+      (result.truncated ? "+" : "");
+  }
+
+  if (!findPanel.hidden) fillResults(result);
+  markCurrentRow(result.index);
+}
+
+function fillResults(result) {
+  findResults.replaceChildren();
+  if (result.error) return;
+  for (const hit of MarklensFind.list()) {
+    const row = document.createElement("li");
+    row.dataset.i = hit.i;
+    row.append(hit.before);
+    const strong = document.createElement("strong");
+    strong.textContent = hit.text;
+    row.append(strong, hit.after);
+    findResults.append(row);
   }
 }
 
-function showHit(index) {
-  if (!hits.length) {
-    findCount.textContent = "No matches";
-    return;
+function markCurrentRow(index) {
+  for (const row of findResults.children) {
+    row.classList.toggle("current", Number(row.dataset.i) === index);
   }
-  hits[hitIndex]?.classList.remove("active");
-  hitIndex = (index + hits.length) % hits.length;
-  const mark = hits[hitIndex];
-  mark.classList.add("active");
-  mark.scrollIntoView({ block: "center" });
-  findCount.textContent = `${hitIndex + 1} of ${hits.length}`;
+  if (index >= 0) {
+    findResults.children[index]?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Re-marks from scratch each time. The documents here are one screenful to a
+// few hundred lines, so the simple thing is fast enough and cannot drift out of
+// step with the text the way an incremental index would.
+function runSearch() {
+  render(MarklensFind.run(query()));
+}
+
+// Stepping, wrapping, and re-searching when a re-render has orphaned the
+// marks are all decided inside the engine, so the three ports cannot disagree
+// about them.
+function findText(backwards) {
+  render(MarklensFind.advance(query(), backwards, findWrap.checked));
 }
 
 // Called after the document is re-rendered, which orphans every mark. Re-runs
@@ -436,37 +452,10 @@ function showHit(index) {
 // being read, and a search should survive someone editing the document in
 // another window.
 function refreshSearch() {
-  hits = [];
-  hitIndex = -1;
+  MarklensFind.clear();
   findCount.textContent = "";
-  if (!findBar.hidden && findInput.value) runSearch(findInput.value);
-}
-
-// Re-marks from scratch each time. The documents here are one screenful to a
-// few hundred lines, so the simple thing is fast enough and cannot drift out of
-// step with the text the way an incremental index would.
-function runSearch(query) {
-  clearHits();
-  if (!query) return;
-  markHits(query);
-  showHit(0);
-}
-
-function findText(backwards) {
-  const q = findInput.value;
-  if (!q) {
-    clearHits();
-    return;
-  }
-  // `isConnected` is the important half. A re-render replaces every node, so
-  // the marks are gone while `hits` still points at them - and stepping through
-  // detached nodes moves the counter and nothing else, which looks exactly like
-  // the bar having stopped responding.
-  if (!hits.length || !hits[0].isConnected) {
-    runSearch(q);
-    return;
-  }
-  showHit(hitIndex + (backwards ? -1 : 1));
+  findResults.replaceChildren();
+  if (!findBar.hidden && findInput.value) runSearch();
 }
 
 function focusFind() {
@@ -483,10 +472,20 @@ function focusFind() {
 
 function hideFind() {
   findBar.hidden = true;
-  clearHits();
+  findPanel.hidden = true;
+  findOptionsBtn.setAttribute("aria-expanded", "false");
+  MarklensFind.clear();
+  findCount.textContent = "";
+  findResults.replaceChildren();
 }
 
-findInput.addEventListener("input", () => runSearch(findInput.value));
+function toggleFindPanel() {
+  findPanel.hidden = !findPanel.hidden;
+  findOptionsBtn.setAttribute("aria-expanded", String(!findPanel.hidden));
+  if (!findPanel.hidden) fillResults(MarklensFind.state());
+}
+
+findInput.addEventListener("input", runSearch);
 findInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") findText(e.shiftKey);
   if (e.key === "Escape") hideFind();
@@ -495,10 +494,27 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !findBar.hidden) hideFind();
 });
 
+// An option changes what matches, so it searches at once rather than waiting
+// to be told again: the click *is* the deliberate act.
+for (const box of [findCase, findWord, findRegex]) {
+  box.addEventListener("change", () => {
+    // A regex brings its own word boundaries, and wrapping somebody's pattern
+    // in lookarounds behind their back is worse than refusing the combination.
+    findWord.disabled = findRegex.checked;
+    runSearch();
+  });
+}
+
+findResults.addEventListener("click", (e) => {
+  const row = e.target.closest("li");
+  if (row) render(MarklensFind.show(Number(row.dataset.i)));
+});
+
 findBar.addEventListener("click", (e) => {
   const act = e.target.closest("button")?.dataset.act;
   if (act === "find-prev") findText(true);
   if (act === "find-next") findText(false);
+  if (act === "find-options") toggleFindPanel();
   if (act === "find-close") hideFind();
 });
 

@@ -341,8 +341,14 @@ qt_add_executable(find_smoke tests/find_smoke.cpp)
 target_link_libraries(find_smoke PRIVATE marklens_gui)
 add_test(NAME find COMMAND find_smoke)
 
+# The shared find contract: every case in find_cases.json, plus the options
+# panel and the results list.
+qt_add_executable(find_cases_smoke tests/find_cases_smoke.cpp)
+target_link_libraries(find_cases_smoke PRIVATE marklens_gui)
+add_test(NAME findcases COMMAND find_cases_smoke)
+
 set_target_properties(frag_smoke back_smoke smoke_gui nav_smoke find_smoke
-                      PROPERTIES WIN32_EXECUTABLE FALSE)
+                      find_cases_smoke PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME fragment COMMAND frag_smoke)
 
 # Named once and reused below. These lists were repeated at four call sites,
@@ -351,7 +357,7 @@ add_test(NAME fragment COMMAND frag_smoke)
 # a Linux runner with "could not connect to display" (and passes on macOS and
 # Windows, whose platform plugins need no display server), and without the
 # settings override it writes to the developer's own recent-files list.
-set(MARKLENS_GUI_TESTS smoke navigation fragment back find)
+set(MARKLENS_GUI_TESTS smoke navigation fragment back find findcases)
 set(MARKLENS_ALL_TESTS core ${MARKLENS_GUI_TESTS})
 
 set_tests_properties(${MARKLENS_GUI_TESTS} PROPERTIES

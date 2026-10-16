@@ -1,0 +1,26 @@
+{
+  "_comment": "Find contract. Each case searches the rendered form of `doc` (shared/spec/fixtures/find_doc.md) with the given options and expects `count` matches. Options default to false, so a case naming none is a plain case-insensitive substring search - which is all QWebEngineView::findText could ever do, and the reason all three ports search the document's own text through shared/web/find.js instead. `error` means the pattern is not valid and nothing is searched. The cases that matter most are the structural ones: a phrase spanning an inline element or a source newline must match, because the HTML a Markdown renderer emits is full of both, and a phrase spanning a block boundary must not.",
+  "doc": "find_doc.md",
+  "cases": [
+    { "why": "plain substring, case folded", "phrase": "needle", "count": 4 },
+    { "why": "case sensitive, mixed", "phrase": "Needle", "caseSensitive": true, "count": 1 },
+    { "why": "case sensitive, upper", "phrase": "NEEDLE", "caseSensitive": true, "count": 1 },
+    { "why": "substrings match inside words", "phrase": "tap", "count": 4 },
+    { "why": "whole word excludes them", "phrase": "tap", "wholeWord": true, "count": 1 },
+    { "why": "whole word, plural", "phrase": "taps", "wholeWord": true, "count": 1 },
+    { "why": "regex quantifier", "phrase": "ne+dle", "regex": true, "count": 4 },
+    { "why": "regex alternation", "phrase": "tap(s|ping)", "regex": true, "count": 2 },
+    { "why": "regex bounded by whole word", "phrase": "tap.", "regex": true, "wholeWord": true, "count": 1 },
+    { "why": "spans an inline element", "phrase": "the bold word", "count": 1 },
+    { "why": "spans a newline in the source", "phrase": "wrapped across lines", "count": 1 },
+    { "why": "does not span a block boundary", "phrase": "end of one start of two", "count": 0 },
+    { "why": "a literal dot is a dot", "phrase": "n..dle", "count": 0 },
+    { "why": "a regex dot is a wildcard", "phrase": "n..dle", "regex": true, "count": 4 },
+    { "why": "code blocks are searched", "phrase": "needle in code", "count": 1 },
+    { "why": "table cells are searched", "phrase": "alpha", "count": 1 },
+    { "why": "cells are separate blocks", "phrase": "alpha beta", "count": 0 },
+    { "why": "an unclosed group is not a search", "phrase": "(unclosed", "regex": true, "count": 0, "error": true },
+    { "why": "the same text is literal, not a pattern", "phrase": "(unclosed", "count": 0 },
+    { "why": "nothing searched for, nothing found", "phrase": "", "count": 0 }
+  ]
+}
