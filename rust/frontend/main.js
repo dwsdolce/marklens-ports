@@ -537,6 +537,56 @@ document.getElementById("toolbar").addEventListener("click", (e) => {
   if (act && actions[act]) actions[act]();
 });
 
+// ── keyboard, on Windows only ──────────────────────────────────────────
+//
+// The web view has the focus, and on Windows a keystroke that reaches it never
+// reaches the window's accelerator table, so no menu accelerator fires.
+// Turning WebView2's own accelerators off (see disable_browser_accelerators)
+// stops it answering Ctrl+F with its own find bar, but it does not hand the
+// key back to the menu - nothing does. The page is where the focus is, so the
+// page is what can still hear them.
+//
+// macOS and Linux are left alone deliberately. There the menu does get the
+// key, and a second handler here would run the action twice - which for Find
+// means opening the bar and closing it again.
+//
+// The table mirrors the accelerators in build_menu; the actions are the same
+// ones the menu events call, so only the key is written down twice.
+if (navigator.userAgent.includes("Windows")) {
+  const accelerators = [
+    { key: "o", ctrl: true, run: actions.open },
+    { key: "F5", run: actions.reload },
+    { key: "e", ctrl: true, shift: true, run: actions.print },
+    { key: "f", ctrl: true, run: focusFind },
+    { key: "F3", run: () => findText(false) },
+    { key: "F3", shift: true, run: () => findText(true) },
+    { key: "[", ctrl: true, run: goBack },
+    { key: "=", ctrl: true, run: actions["zoom-in"] },
+    // The menu says Ctrl+=, but "+" is the obvious key to reach for and on
+    // most layouts it needs Shift, so it arrives as "+" with Shift held.
+    { key: "+", ctrl: true, shift: true, run: actions["zoom-in"] },
+    { key: "-", ctrl: true, run: actions["zoom-out"] },
+    { key: "0", ctrl: true, run: actions["zoom-reset"] },
+  ];
+
+  document.addEventListener("keydown", (e) => {
+    for (const a of accelerators) {
+      // A named key ("F3") is matched as given; a character is matched without
+      // regard to case, since Shift changes what the key reports.
+      const hit = a.key.length === 1
+        ? e.key.toLowerCase() === a.key
+        : e.key === a.key;
+      if (!hit) continue;
+      if (!!a.ctrl !== e.ctrlKey) continue;
+      if (!!a.shift !== e.shiftKey) continue;
+      if (e.altKey || e.metaKey) continue;
+      e.preventDefault();
+      a.run();
+      return;
+    }
+  });
+}
+
 // ── help overlay ─────────────────────────────────────────────────────────────
 
 const helpOverlay = document.getElementById("help-overlay");

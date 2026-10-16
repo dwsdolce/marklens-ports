@@ -346,13 +346,27 @@ port has no GUI test to run them from.
   own bar never appeared. `F3`/`Shift+F3` are its find-again keys, `F5` reloads
   the page out from under the document, and `Ctrl` with plus, minus or zero
   drive a zoom the View menu knows nothing about. Every one of those is a menu
-  item in this application. The fix is one setting,
-  `ICoreWebView2Settings3::SetAreBrowserAcceleratorKeysEnabled(false)`, reached
-  through Tauri's `with_webview`; intercepting each key in JavaScript instead
-  would be a second definition of accelerators the menu already owns. It costs
-  `F12`. Neither Qt WebEngine nor WebKitGTK has accelerators of its own, so
-  this is Windows and WebView2 alone - and it is invisible on a Mac, which is
-  the trap.
+  item in this application.
+
+  It takes two changes, and the first alone looks like a fix without being
+  one. `ICoreWebView2Settings3::SetAreBrowserAcceleratorKeysEnabled(false)`,
+  reached through Tauri's `with_webview`, stops WebView2 *answering* those
+  keys - its find bar stops appearing. It does not hand them to the menu:
+  the web view still consumes the keystroke, so the window's accelerator
+  table never sees it and the menu item still does not fire. Nothing in the
+  host gets a second chance at it. So the page, which is where the focus is,
+  has to hear them itself - a `keydown` listener mirroring the accelerators
+  in `build_menu` and calling the same actions the menu events call, on
+  Windows only. On macOS and Linux the menu does get the key, and a second
+  handler there would run the action twice, which for Find means opening the
+  bar and closing it again.
+
+  Disabling the browser accelerators is still worth doing on its own account:
+  without it, `Ctrl+F` would open WebView2's find bar *as well*.
+
+  Neither Qt WebEngine nor WebKitGTK has accelerators of its own, so this is
+  Windows and WebView2 alone - and it is invisible on a Mac, which is the
+  trap.
 
 ## The fixtures
 
