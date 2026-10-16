@@ -567,6 +567,46 @@ fn filename(path: &str) -> String {
 
 // ── entry ────────────────────────────────────────────────────────────────────
 
+/// Stop WebView2 answering the keys the menu bar owns.
+///
+/// On Windows the webview gets the keystroke before the window's accelerator
+/// table does, and WebView2 has browser accelerators of its own: Ctrl+F opens
+/// *its* find bar - floating at the top right, counting "5/21", with no list
+/// of matches - so the application's bar never opens and the menu item never
+/// fires. F3 and Shift+F3 are its find-again keys, F5 reloads the page out
+/// from under the document, and Ctrl+plus/minus/0 drive a zoom the View menu
+/// knows nothing about. Every one of those is a menu item here.
+///
+/// Turning the whole set off is the fix rather than intercepting each key in
+/// the page, because the menu already defines them and a second definition in
+/// JavaScript is a second set of answers. It also leaves the Windows build
+/// behaving like the Qt ports, where the web view has no accelerators of its
+/// own to begin with.
+///
+/// It costs F12 and Ctrl+Shift+I: devtools on Windows is then the context
+/// menu, in a build that enables it.
+#[cfg(windows)]
+fn disable_browser_accelerators(window: &tauri::WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use windows_core::Interface;
+
+    let _ = window.with_webview(|webview| unsafe {
+        let settings = webview
+            .controller()
+            .CoreWebView2()
+            .and_then(|core| core.Settings())
+            .and_then(|settings| settings.cast::<ICoreWebView2Settings3>());
+        if let Ok(settings) = settings {
+            let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+        }
+    });
+}
+
+/// No-op off Windows: WKWebView and WebKitGTK have no accelerators of their
+/// own, so the menu already gets every key.
+#[cfg(not(windows))]
+fn disable_browser_accelerators(_window: &tauri::WebviewWindow) {}
+
 fn main() {
     // WebKitGTK 2.42 began compositing through a DMA-BUF buffer shared with the
     // GPU. Where that handshake fails the web process dies moments after the
@@ -638,6 +678,7 @@ fn main() {
 
             if let Some(window) = handle.get_webview_window("main") {
                 let _ = window.set_title(&titles::for_document("", titles::DOCUMENT_ONLY));
+                disable_browser_accelerators(&window);
             }
 
             // Nothing named on the command line: pick up where you left off,
